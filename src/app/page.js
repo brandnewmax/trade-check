@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 
 function Spinner({ size = 16 }) {
   return (
@@ -13,9 +13,10 @@ function Spinner({ size = 16 }) {
 
 // ─── MARKDOWN RENDERER ────────────────────────────────────────────────────────
 function MarkdownRenderer({ content }) {
-  if (!content) return null
+  if (!content || typeof content !== 'string') return null
+  const safe = String(content)
 
-  const lines = content.split('\n')
+  const lines = safe.split('\n')
   const elements = []
   let i = 0
 
@@ -376,6 +377,18 @@ function QueryPage({ user }) {
   )
 }
 
+// ─── SAFE MARKDOWN WRAPPER ────────────────────────────────────────────────────
+class SafeMarkdown extends React.Component {
+  constructor(props) { super(props); this.state = { hasError: false } }
+  static getDerivedStateFromError() { return { hasError: true } }
+  render() {
+    if (this.state.hasError) return <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, padding: '8px 0' }}>内容加载失败</div>
+    const { text } = this.props
+    if (!text || typeof text !== 'string') return <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>无内容</span>
+    return <MarkdownRenderer content={text} />
+  }
+}
+
 // ─── HISTORY PAGE ─────────────────────────────────────────────────────────────
 function HistoryPage({ user }) {
   const [queries, setQueries] = useState([])
@@ -503,10 +516,7 @@ function HistoryPage({ user }) {
                       <div>
                         <div style={{ color: 'rgba(255,255,255,0.28)', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>分析结果</div>
                         <div style={{ background: 'rgba(0,0,0,0.18)', borderRadius: 8, padding: '14px 16px', maxHeight: 360, overflowY: 'auto' }}>
-                          {q.result
-                            ? <MarkdownRenderer content={q.result} />
-                            : <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>无内容</span>
-                          }
+                          <SafeMarkdown text={q.result} />
                         </div>
                       </div>
                     </div>
