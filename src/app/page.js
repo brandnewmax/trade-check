@@ -1,51 +1,54 @@
 'use client'
 import React, { useState, useEffect, useRef } from 'react'
 
-// ─── DESIGN TOKENS (Claude-inspired) ─────────────────────────────────────────
+// ─── DESIGN TOKENS (Claude light theme) ──────────────────────────────────────
 const T = {
-  // Colors — warm, not cold blue-black
-  primary:      '#d97706',   // warm amber accent (Claude's orange-ish tone)
-  primaryHover: '#f59e0b',
-  primaryBg:    'rgba(217,119,6,0.1)',
-  primaryBorder:'rgba(217,119,6,0.3)',
-  success:      '#34d399',
-  successBg:    'rgba(52,211,153,0.1)',
-  warning:      '#fbbf24',
-  warningBg:    'rgba(251,191,36,0.1)',
-  error:        '#f87171',
-  errorBg:      'rgba(248,113,113,0.1)',
-  // Text — warm whites, not cold whites
-  textPrimary:  'rgba(255,248,235,0.9)',   // warm white
-  textSecondary:'rgba(255,248,235,0.6)',
-  textTertiary: 'rgba(255,248,235,0.35)',
-  textDisabled: 'rgba(255,248,235,0.2)',
-  // Surface — warm dark grays (Claude's palette)
-  bgContainer:  'rgba(255,255,255,0.04)',
-  bgElevated:   'rgba(255,255,255,0.05)',
-  bgLayout:     '#1a1a17',   // warm dark, not cold GitHub dark
-  bgSider:      '#201f1b',   // slightly warmer panel
-  // Border — warm subtle
-  border:       'rgba(255,248,235,0.1)',
-  borderSecond: 'rgba(255,248,235,0.06)',
+  // Accent — Claude's warm orange-brown
+  primary:      '#b45309',
+  primaryHover: '#92400e',
+  primaryBg:    'rgba(180,83,9,0.08)',
+  primaryBorder:'rgba(180,83,9,0.25)',
+  success:      '#15803d',
+  successBg:    'rgba(21,128,61,0.08)',
+  warning:      '#b45309',
+  warningBg:    'rgba(180,83,9,0.08)',
+  error:        '#b91c1c',
+  errorBg:      'rgba(185,28,28,0.06)',
+  // Text — Claude's warm dark text on light background
+  textPrimary:  '#1a1309',   // near-black warm
+  textSecondary:'#5c4f3a',   // warm medium gray
+  textTertiary: '#9c8a72',   // warm light gray
+  textDisabled: '#c4b49e',
+  // Surface — Claude's warm off-white / cream
+  bgLayout:     '#f7f4ef',   // Claude's main background (warm cream)
+  bgSider:      '#f0ece4',   // slightly darker cream for sidebar
+  bgContainer:  'rgba(0,0,0,0.03)',
+  bgElevated:   '#ffffff',   // card surfaces
+  bgInput:      '#ffffff',
+  // Border
+  border:       'rgba(26,19,9,0.12)',
+  borderSecond: 'rgba(26,19,9,0.07)',
   // Radius
   radiusSm: 6,
   radiusMd: 8,
   radiusLg: 12,
   // Shadow
-  shadow: '0 1px 2px rgba(0,0,0,0.3)',
-  // Fonts — system fonts like Claude (no Google Fonts needed)
-  fontUI:   "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif",
-  fontBody: "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif",
+  shadow: '0 1px 3px rgba(0,0,0,0.08), 0 0 0 1px rgba(26,19,9,0.06)',
+  shadowCard: '0 2px 8px rgba(0,0,0,0.06), 0 0 0 1px rgba(26,19,9,0.06)',
+  // Fonts — Instrument Sans (closest to Claude Sans) + system fallback
+  fontUI:   "'Instrument Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', system-ui, sans-serif",
+  fontBody: "'Instrument Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', system-ui, sans-serif",
   fontMono: "'SFMono-Regular', 'Consolas', 'Liberation Mono', monospace",
 }
 
 // ─── SPINNER ──────────────────────────────────────────────────────────────────
 function Spinner({ size = 16, color }) {
+  const c = color || T.textTertiary
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
       style={{ animation: 'spin 0.8s linear infinite', flexShrink: 0 }}>
-      <circle cx="12" cy="12" r="10" stroke={color || 'currentColor'} strokeWidth="2.5" strokeOpacity="0.2" />
-      <path d="M12 2a10 10 0 0110 10" stroke={color || 'currentColor'} strokeWidth="2.5" strokeLinecap="round" />
+      <circle cx="12" cy="12" r="10" stroke={c} strokeWidth="2.5" strokeOpacity="0.2" />
+      <path d="M12 2a10 10 0 0110 10" stroke={c} strokeWidth="2.5" strokeLinecap="round" />
     </svg>
   )
 }
@@ -53,12 +56,12 @@ function Spinner({ size = 16, color }) {
 // ─── MARKDOWN RENDERER ────────────────────────────────────────────────────────
 // Subtle section accent colors — warm tones, low saturation
 const MD_SECTION_COLORS = [
-  { border: 'rgba(251,191,36,0.5)',  bg: 'rgba(251,191,36,0.05)',  dot: '#fbbf24' },  // amber
-  { border: 'rgba(52,211,153,0.5)',  bg: 'rgba(52,211,153,0.05)',  dot: '#34d399' },  // teal
-  { border: 'rgba(167,139,250,0.5)', bg: 'rgba(167,139,250,0.05)', dot: '#a78bfa' },  // violet
-  { border: 'rgba(251,146,60,0.5)',  bg: 'rgba(251,146,60,0.05)',  dot: '#fb923c' },  // orange
-  { border: 'rgba(96,165,250,0.5)',  bg: 'rgba(96,165,250,0.05)',  dot: '#60a5fa' },  // blue
-  { border: 'rgba(244,114,182,0.5)', bg: 'rgba(244,114,182,0.05)', dot: '#f472b6' },  // pink
+  { border: '#d97706', bg: 'rgba(217,119,6,0.06)',   dot: '#d97706' },  // amber
+  { border: '#16a34a', bg: 'rgba(22,163,74,0.06)',   dot: '#16a34a' },  // green
+  { border: '#7c3aed', bg: 'rgba(124,58,237,0.06)',  dot: '#7c3aed' },  // violet
+  { border: '#0891b2', bg: 'rgba(8,145,178,0.06)',   dot: '#0891b2' },  // cyan
+  { border: '#db2777', bg: 'rgba(219,39,119,0.06)',  dot: '#db2777' },  // pink
+  { border: '#ea580c', bg: 'rgba(234,88,12,0.06)',   dot: '#ea580c' },  // orange
 ]
 
 function MarkdownRenderer({ content }) {
@@ -69,7 +72,7 @@ function MarkdownRenderer({ content }) {
   let h2Count = 0
 
   // Base text style — matches Claude's body text
-  const base = { fontFamily: T.fontBody, fontSize: 15, lineHeight: 1.75, color: T.textSecondary }
+  const base = { fontFamily: T.fontBody, fontSize: 15, lineHeight: 1.8, color: T.textPrimary }
 
   while (i < lines.length) {
     const line = lines[i]
@@ -77,7 +80,7 @@ function MarkdownRenderer({ content }) {
     // H1
     if (line.startsWith('# ')) {
       elements.push(
-        <h1 key={i} style={{ ...base, color: T.textPrimary, fontSize: 18, fontWeight: 600, margin: '0 0 16px', lineHeight: 1.4 }}>
+        <h1 key={i} style={{ ...base, color: T.textPrimary, fontSize: 17, fontWeight: 600, margin: '0 0 16px', lineHeight: 1.4 }}>
           {renderInline(line.slice(2))}
         </h1>
       )
@@ -88,7 +91,7 @@ function MarkdownRenderer({ content }) {
       h2Count++
       elements.push(
         <div key={i} style={{ margin: '24px 0 10px', borderLeft: `3px solid ${col.border}`, paddingLeft: 12, background: col.bg, borderRadius: '0 6px 6px 0', padding: '8px 14px' }}>
-          <h2 style={{ margin: 0, fontFamily: T.fontUI, color: T.textPrimary, fontSize: 15, fontWeight: 600 }}>
+          <h2 style={{ margin: 0, fontFamily: T.fontUI, color: T.textPrimary, fontSize: 14, fontWeight: 600 }}>
             {renderInline(line.slice(3))}
           </h2>
         </div>
@@ -97,7 +100,7 @@ function MarkdownRenderer({ content }) {
     // H3
     } else if (line.startsWith('### ')) {
       elements.push(
-        <h3 key={i} style={{ ...base, color: T.textPrimary, fontSize: 15, fontWeight: 600, margin: '16px 0 6px' }}>
+        <h3 key={i} style={{ ...base, color: T.textPrimary, fontSize: 14.5, fontWeight: 600, margin: '14px 0 5px' }}>
           {renderInline(line.slice(4))}
         </h3>
       )
@@ -148,7 +151,7 @@ function MarkdownRenderer({ content }) {
     // Blockquote
     } else if (line.startsWith('> ')) {
       elements.push(
-        <blockquote key={i} style={{ margin: '8px 0', padding: '8px 14px', background: T.bgContainer, borderLeft: `2px solid ${T.border}`, borderRadius: '0 6px 6px 0', color: T.textTertiary, fontSize: 14, fontStyle: 'italic', lineHeight: 1.7 }}>
+        <blockquote key={i} style={{ margin: '8px 0', padding: '8px 14px', background: T.bgContainer, borderLeft: `2px solid ${T.border}`, borderRadius: '0 6px 6px 0', color: T.textSecondary, fontSize: 14.5, fontStyle: 'italic', lineHeight: 1.7 }}>
           {renderInline(line.slice(2))}
         </blockquote>
       )
@@ -198,7 +201,7 @@ function renderInline(text) {
     // Code
     const co = remaining.match(/^`(.*?)`/)
     if (co) {
-      parts.push(<code key={key++} style={{ background: 'rgba(255,248,235,0.07)', border: `1px solid ${T.border}`, borderRadius: 4, padding: '1px 6px', fontFamily: T.fontMono, fontSize: '0.88em', color: 'rgba(255,248,235,0.75)' }}>{co[1]}</code>)
+      parts.push(<code key={key++} style={{ background: 'rgba(0,0,0,0.05)', border: `1px solid ${T.border}`, borderRadius: 4, padding: '1px 6px', fontFamily: T.fontMono, fontSize: '0.88em', color: T.textPrimary }}>{co[1]}</code>)
       remaining = remaining.slice(co[0].length); continue
     }
     const next = remaining.search(/[\*`]/)
@@ -265,15 +268,15 @@ function FormItem({ label, hint, children }) {
 
 const inputStyle = {
   width: '100%', boxSizing: 'border-box',
-  background: T.bgContainer,
+  background: T.bgInput,
   border: `1px solid ${T.border}`,
   borderRadius: T.radiusMd,
   padding: '8px 12px',
   color: T.textPrimary,
-  fontSize: 13.5,
+  fontSize: 15,
   lineHeight: 1.6,
   outline: 'none',
-  transition: 'border-color 0.2s',
+  transition: 'border-color 0.2s, box-shadow 0.2s',
 }
 
 // ─── LOGIN PAGE ───────────────────────────────────────────────────────────────
@@ -297,17 +300,15 @@ function LoginPage({ onLogin }) {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: T.bgLayout, position: 'relative', overflow: 'hidden', fontFamily: T.fontUI }}>
-      {/* subtle grid bg */}
       <div style={{ position: 'absolute', inset: 0, backgroundImage: `linear-gradient(${T.borderSecond} 1px,transparent 1px),linear-gradient(90deg,${T.borderSecond} 1px,transparent 1px)`, backgroundSize: '48px 48px' }} />
-      <div style={{ position: 'absolute', top: '10%', left: '50%', transform: 'translateX(-50%)', width: 600, height: 600, borderRadius: '50%', background: 'radial-gradient(circle,rgba(22,119,255,0.08) 0%,transparent 70%)', pointerEvents: 'none' }} />
 
-      <div style={{ position: 'relative', width: 400, background: T.bgSider, border: `1px solid ${T.border}`, borderRadius: T.radiusLg, padding: '40px 36px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
+      <div style={{ position: 'relative', width: 400, background: T.bgElevated, border: `1px solid ${T.border}`, borderRadius: T.radiusLg, padding: '40px 36px', boxShadow: T.shadowCard }}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 36 }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 48, height: 48, borderRadius: T.radiusMd, background: T.primary, marginBottom: 16 }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </div>
-          <div style={{ color: T.textPrimary, fontSize: 20, fontWeight: 600 }}>外贸背景调查</div>
+          <div style={{ color: T.textPrimary, fontSize: 20, fontWeight: 600, letterSpacing: '-0.3px' }}>外贸背景调查</div>
           <div style={{ color: T.textTertiary, fontSize: 12, marginTop: 4 }}>Trade Background Intelligence</div>
         </div>
 
@@ -324,11 +325,11 @@ function LoginPage({ onLogin }) {
           </div>
         )}
 
-        <button onClick={handleLogin} disabled={loading} style={{ width: '100%', padding: '9px', border: 'none', borderRadius: T.radiusMd, cursor: loading ? 'wait' : 'pointer', background: loading ? 'rgba(22,119,255,0.5)' : T.primary, color: '#fff', fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4 }}>
+        <button onClick={handleLogin} disabled={loading} style={{ width: '100%', padding: '10px', border: 'none', borderRadius: T.radiusMd, cursor: loading ? 'wait' : 'pointer', background: loading ? 'rgba(180,83,9,0.5)' : T.primary, color: '#fff', fontSize: 15, fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4, letterSpacing: '0.01em' }}>
           {loading ? <><Spinner color="#fff" />登录中...</> : '登录'}
         </button>
 
-        <div style={{ textAlign: 'center', marginTop: 20, color: T.textDisabled, fontSize: 11 }}>© 2025 mmldigi.com</div>
+        <div style={{ textAlign: 'center', marginTop: 20, color: T.textTertiary, fontSize: 12 }}>© 2025 mmldigi.com</div>
       </div>
     </div>
   )
@@ -392,7 +393,7 @@ function QueryPage({ user }) {
       </div>
 
       {/* Input card */}
-      <div style={{ background: T.bgSider, border: `1px solid ${T.border}`, borderRadius: T.radiusLg, padding: '24px 28px' }}>
+      <div style={{ background: T.bgElevated, border: `1px solid ${T.border}`, borderRadius: T.radiusLg, padding: '24px 28px', boxShadow: T.shadowCard }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 16 }}>
           <FormItem label="公司网址（或公司详细信息）">
             <textarea value={url} onChange={e => setUrl(e.target.value)}
@@ -413,7 +414,7 @@ function QueryPage({ user }) {
           </div>
         )}
 
-        <button onClick={analyze} disabled={loading} style={{ width: '100%', padding: '9px', border: 'none', borderRadius: T.radiusMd, cursor: loading ? 'wait' : 'pointer', background: loading ? 'rgba(22,119,255,0.5)' : T.primary, color: '#fff', fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+        <button onClick={analyze} disabled={loading} style={{ width: '100%', padding: '10px', border: 'none', borderRadius: T.radiusMd, cursor: loading ? 'wait' : 'pointer', background: loading ? 'rgba(180,83,9,0.5)' : T.primary, color: '#fff', fontSize: 15, fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, letterSpacing: '0.01em' }}>
           {loading
             ? <><Spinner color="#fff" />AI 分析中...</>
             : <><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M13 10V3L4 14h7v7l9-11h-7z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>开始背调分析</>
@@ -423,9 +424,9 @@ function QueryPage({ user }) {
 
       {/* Result card */}
       {(result || streaming) && (
-        <div style={{ background: T.bgSider, border: `1px solid ${T.border}`, borderRadius: T.radiusLg, overflow: 'hidden' }}>
+        <div style={{ background: T.bgElevated, border: `1px solid ${T.border}`, borderRadius: T.radiusLg, overflow: 'hidden', boxShadow: T.shadowCard }}>
           {/* Result header */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 24px', borderBottom: `1px solid ${T.borderSecond}`, background: 'rgba(255,255,255,0.02)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 24px', borderBottom: `1px solid ${T.border}`, background: T.bgContainer }}>
             <span style={{ color: T.textSecondary, fontSize: 13, fontWeight: 500 }}>分析结果</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               {streaming && <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: T.primary, fontSize: 12 }}><Spinner color={T.primary} size={13} />生成中</div>}
@@ -441,7 +442,7 @@ function QueryPage({ user }) {
 
       {/* Empty state */}
       {!result && !streaming && !loading && (
-        <div style={{ background: T.bgSider, border: `1px dashed ${T.borderSecond}`, borderRadius: T.radiusLg, padding: '40px 24px', textAlign: 'center' }}>
+        <div style={{ background: T.bgElevated, border: `1px dashed ${T.border}`, borderRadius: T.radiusLg, padding: '40px 24px', textAlign: 'center' }}>
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" style={{ color: T.textDisabled, margin: '0 auto 10px', display: 'block' }}><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
           <div style={{ color: T.textTertiary, fontSize: 13 }}>填写上方信息后点击开始分析</div>
         </div>
@@ -500,9 +501,9 @@ function HistoryPage({ user }) {
       </div>
 
       {/* Table */}
-      <div style={{ background: T.bgSider, border: `1px solid ${T.border}`, borderRadius: T.radiusLg, overflow: 'hidden' }}>
+      <div style={{ background: T.bgElevated, border: `1px solid ${T.border}`, borderRadius: T.radiusLg, overflow: 'hidden', boxShadow: T.shadowCard }}>
         {/* Table header */}
-        <div style={{ display: 'grid', gridTemplateColumns: '72px 1fr 1fr 100px', gap: 0, borderBottom: `1px solid ${T.border}`, background: 'rgba(255,255,255,0.02)', padding: '10px 20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '72px 1fr 1fr 100px', gap: 0, borderBottom: `1px solid ${T.border}`, background: T.bgContainer, padding: '10px 20px' }}>
           {['评分', '公司网址', '客户信息', '时间'].map(h => (
             <div key={h} style={{ color: T.textTertiary, fontSize: 12, fontWeight: 500 }}>{h}</div>
           ))}
@@ -522,7 +523,7 @@ function HistoryPage({ user }) {
                 {/* Table row */}
                 <div onClick={() => setSelected(isOpen ? null : i)}
                   style={{ display: 'grid', gridTemplateColumns: '72px 1fr 1fr 100px', gap: 0, padding: '13px 20px', cursor: 'pointer', borderBottom: `1px solid ${T.borderSecond}`, background: isOpen ? T.primaryBg : 'transparent', transition: 'background 0.15s' }}
-                  onMouseEnter={e => { if (!isOpen) e.currentTarget.style.background = 'rgba(255,255,255,0.03)' }}
+                  onMouseEnter={e => { if (!isOpen) e.currentTarget.style.background = 'rgba(0,0,0,0.02)' }}
                   onMouseLeave={e => { if (!isOpen) e.currentTarget.style.background = 'transparent' }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -548,7 +549,7 @@ function HistoryPage({ user }) {
 
                 {/* Expanded row */}
                 {isOpen && (
-                  <div onClick={e => e.stopPropagation()} style={{ borderBottom: `1px solid ${T.borderSecond}`, background: 'rgba(22,119,255,0.04)', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div onClick={e => e.stopPropagation()} style={{ borderBottom: `1px solid ${T.border}`, background: T.bgContainer, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                       {q.url && (
                         <div>
@@ -613,7 +614,7 @@ function SettingsPage({ user }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: isAdmin ? '360px 1fr' : '360px', gap: 20 }}>
         {/* My API config */}
-        <div style={{ background: T.bgSider, border: `1px solid ${T.border}`, borderRadius: T.radiusLg, padding: '24px 28px' }}>
+        <div style={{ background: T.bgElevated, border: `1px solid ${T.border}`, borderRadius: T.radiusLg, padding: '24px 28px', boxShadow: T.shadowCard }}>
           <div style={{ color: T.textSecondary, fontSize: 13, fontWeight: 600, marginBottom: 20, paddingBottom: 14, borderBottom: `1px solid ${T.borderSecond}` }}>我的 API 配置</div>
 
           <FormItem label="API Key" hint="仅对您本人生效">
@@ -643,7 +644,7 @@ function SettingsPage({ user }) {
 
         {/* Admin global config */}
         {isAdmin && (
-          <div style={{ background: T.bgSider, border: `1px solid ${T.border}`, borderRadius: T.radiusLg, padding: '24px 28px' }}>
+          <div style={{ background: T.bgElevated, border: `1px solid ${T.border}`, borderRadius: T.radiusLg, padding: '24px 28px', boxShadow: T.shadowCard }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, paddingBottom: 14, borderBottom: `1px solid ${T.borderSecond}` }}>
               <span style={{ color: T.textSecondary, fontSize: 13, fontWeight: 600 }}>全局配置</span>
               <span style={{ fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 4, background: 'rgba(250,173,20,0.12)', color: '#faad14', border: '1px solid rgba(250,173,20,0.25)' }}>Admin</span>
@@ -687,7 +688,7 @@ function Layout({ user, onLogout, page, setPage, children }) {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: T.bgLayout, fontFamily: T.fontUI }}>
       {/* Sider */}
-      <aside style={{ width: 220, flexShrink: 0, background: T.bgSider, borderRight: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', padding: '20px 12px' }}>
+      <aside style={{ width: 220, flexShrink: 0, background: T.bgSider, borderRight: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', padding: '20px 12px', boxShadow: 'inset -1px 0 0 rgba(26,19,9,0.07)' }}>
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 8px 20px', borderBottom: `1px solid ${T.borderSecond}`, marginBottom: 8 }}>
           <div style={{ width: 32, height: 32, borderRadius: T.radiusMd, background: T.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -724,7 +725,7 @@ function Layout({ user, onLogout, page, setPage, children }) {
         {/* User */}
         <div style={{ borderTop: `1px solid ${T.borderSecond}`, paddingTop: 12, marginTop: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '6px 8px', marginBottom: 8, borderRadius: T.radiusMd, background: T.bgContainer }}>
-            <div style={{ width: 28, height: 28, borderRadius: '50%', background: T.primaryBg, border: `1px solid ${T.primaryBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.primary, fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+            <div style={{ width: 28, height: 28, borderRadius: '50%', background: T.primaryBg, border: `1px solid ${T.primaryBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.primary, fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
               {user.name?.[0]?.toUpperCase() || 'U'}
             </div>
             <div style={{ minWidth: 0 }}>
