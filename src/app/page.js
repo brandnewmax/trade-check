@@ -73,7 +73,9 @@ function QueryPage({ user }) {
   const [inquiry, setInquiry] = useState('')
   const [result, setResult] = useState('')
   const [loading, setLoading] = useState(false)
+  const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState('')
+  const resultRef = useRef(null)
 
   const riskColor = { high: '#fc8181', medium: '#f6ad55', low: '#68d391', unknown: '#718096' }
   const riskLabel = { high: '高风险', medium: '中风险', low: '低风险', unknown: '未知' }
