@@ -90,7 +90,12 @@ function QueryPage({ user }) {
         body: JSON.stringify({ url, inquiry }),
       })
 
-      const data = await res.json()
+      // Safely parse — Vercel sometimes returns plain text errors
+      const text = await res.text()
+      let data
+      try { data = JSON.parse(text) }
+      catch { throw new Error(`服务器返回异常：${text.slice(0, 200)}`) }
+
       if (!res.ok) throw new Error(data.error || `服务器错误 ${res.status}`)
       setResult(data.result || '')
 
