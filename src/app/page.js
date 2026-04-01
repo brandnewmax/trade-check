@@ -352,13 +352,11 @@ function QueryPage({ user }) {
               {result && !streaming && (() => {
                 const score = extractScore(result)
                 const col = scoreColor(score)
-                const label = scoreLabel(score) || riskLabel[extractRisk(result)]
-                return (
-                  <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 20, background: col.bg, color: col.color, border: `1px solid ${col.border}`, letterSpacing: '0.03em', display: 'flex', alignItems: 'center', gap: 5 }}>
-                    {score !== null && <span style={{ fontSize: 14, fontWeight: 800 }}>{score}</span>}
-                    {label}
+                return score !== null ? (
+                  <span style={{ fontSize: 13, fontWeight: 800, padding: '4px 14px', borderRadius: 20, background: col.bg, color: col.color, border: `1px solid ${col.border}`, letterSpacing: '0.02em' }}>
+                    {score} <span style={{ fontSize: 10, fontWeight: 500, opacity: 0.7 }}>/ 100</span>
                   </span>
-                )
+                ) : null
               })()}
             </div>
           </div>
@@ -389,8 +387,40 @@ function HistoryPage({ user }) {
     fetch('/api/queries').then(r => r.json()).then(d => { setQueries(Array.isArray(d) ? d : []); setLoading(false) })
   }, [])
 
-  const riskColor = { high: '#fc8181', medium: '#f6ad55', low: '#68d391', unknown: '#718096' }
-  const riskLabel = { high: '高风险', medium: '中风险', low: '低风险', unknown: '未知' }
+  // Extract score from saved result text
+  const extractScore = (t) => {
+    if (!t) return null
+    const m100 = t.match(/(\d{1,3})\s*\/\s*100/)
+    if (m100) { const n = parseInt(m100[1]); if (n >= 0 && n <= 100) return n }
+    const mFen = t.match(/(\d{2,3})\s*分/)
+    if (mFen) { const n = parseInt(mFen[1]); if (n >= 0 && n <= 100) return n }
+    return null
+  }
+  const scoreColor = (s) => {
+    if (s === null) return { bg: 'rgba(113,128,150,0.15)', color: '#718096', border: 'rgba(113,128,150,0.3)' }
+    if (s >= 80) return { bg: 'rgba(104,211,145,0.12)', color: '#68d391', border: 'rgba(104,211,145,0.3)' }
+    if (s >= 60) return { bg: 'rgba(246,173,85,0.12)', color: '#f6ad55', border: 'rgba(246,173,85,0.3)' }
+    return { bg: 'rgba(252,129,129,0.12)', color: '#fc8181', border: 'rgba(252,129,129,0.3)' }
+  }
+
+  // Extract a short client summary from inquiry text (first non-empty line up to 40 chars)
+  const clientSummary = (q) => {
+    if (q.url && q.url.trim()) return q.url.trim()
+    if (!q.inquiry) return '—'
+    const firstLine = q.inquiry.split('\n').map(l => l.trim()).find(l => l.length > 2)
+    return firstLine ? firstLine.slice(0, 50) + (firstLine.length > 50 ? '...' : '') : '—'
+  }
+
+  // Extract a hint from inquiry (email, domain, or company name clue)
+  const clientHint = (q) => {
+    if (!q.inquiry) return null
+    const emailMatch = q.inquiry.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i)
+    if (emailMatch) return emailMatch[0]
+    const urlMatch = q.inquiry.match(/(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+\.[a-z]{2,})/i)
+    if (urlMatch) return urlMatch[0]
+    return null
+  }
+
   const visible = queries.filter(q => !search || q.url?.includes(search) || q.inquiry?.includes(search) || q.userEmail?.includes(search))
 
   return (
@@ -400,36 +430,74 @@ function HistoryPage({ user }) {
           <h1 style={{ color: '#fff', fontSize: 25, fontWeight: 700, letterSpacing: '-0.5px' }}>查询历史</h1>
           <p style={{ color: 'rgba(255,255,255,0.38)', fontSize: 13.5, marginTop: 5 }}>共 {visible.length} 条记录</p>
         </div>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="搜索..."
-          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 10, padding: '9px 15px', color: '#fff', fontSize: 13.5, width: 210 }} />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="搜索网址、邮箱、客户信息..."
+          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 10, padding: '9px 15px', color: '#fff', fontSize: 13, width: 240 }} />
       </div>
       {loading
-        ? <div style={{ textAlign: 'center', padding: 60, color: 'rgba(255,255,255,0.3)', display: 'flex', justifyContent: 'center' }}><Spinner size={28} /></div>
+        ? <div style={{ textAlign: 'center', padding: 60, display: 'flex', justifyContent: 'center' }}><Spinner size={28} /></div>
         : visible.length === 0
           ? <div style={{ textAlign: 'center', padding: 80, color: 'rgba(255,255,255,0.2)', fontSize: 14 }}>暂无查询记录</div>
           : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {visible.map((q, i) => (
-              <div key={i} onClick={() => setSelected(selected === i ? null : i)}
-                style={{ background: selected === i ? 'rgba(26,86,219,0.09)' : 'rgba(255,255,255,0.028)', border: `1px solid ${selected === i ? 'rgba(26,86,219,0.28)' : 'rgba(255,255,255,0.065)'}`, borderRadius: 12, padding: '15px 18px', cursor: 'pointer', transition: 'all 0.18s' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 9px', borderRadius: 20, flexShrink: 0, background: `${riskColor[q.riskLevel]}15`, color: riskColor[q.riskLevel], border: `1px solid ${riskColor[q.riskLevel]}33` }}>{riskLabel[q.riskLevel]}</span>
-                  <span style={{ flex: 1, color: 'rgba(255,255,255,0.75)', fontSize: 13.5, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {q.url || (q.inquiry?.slice(0, 60) + '...')}
-                  </span>
-                  <span style={{ color: 'rgba(255,255,255,0.28)', fontSize: 11.5, flexShrink: 0 }}>
-                    {user.role === 'admin' && <span style={{ marginRight: 10, color: 'rgba(255,255,255,0.22)' }}>{q.userEmail}</span>}
-                    {new Date(q.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </div>
-                {selected === i && (
-                  <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {q.url && <div><div style={{ color: 'rgba(255,255,255,0.28)', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>公司网址</div><div style={{ color: '#60a5fa', fontSize: 12.5, fontFamily: 'monospace' }}>{q.url}</div></div>}
-                    {q.inquiry && <div><div style={{ color: 'rgba(255,255,255,0.28)', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>询盘信息</div><div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12.5, lineHeight: 1.65, background: 'rgba(0,0,0,0.18)', borderRadius: 8, padding: '9px 12px', maxHeight: 110, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>{q.inquiry}</div></div>}
-                    <div><div style={{ color: 'rgba(255,255,255,0.28)', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>分析结果</div><div style={{ background: 'rgba(0,0,0,0.18)', borderRadius: 8, padding: '12px 14px', maxHeight: 320, overflowY: 'auto' }}><MarkdownRenderer content={q.result} /></div></div>
+            {visible.map((q, i) => {
+              const score = extractScore(q.result)
+              const col = scoreColor(score)
+              const hint = clientHint(q)
+              return (
+                <div key={i} onClick={() => setSelected(selected === i ? null : i)}
+                  style={{ background: selected === i ? 'rgba(26,86,219,0.09)' : 'rgba(255,255,255,0.028)', border: `1px solid ${selected === i ? 'rgba(26,86,219,0.28)' : 'rgba(255,255,255,0.065)'}`, borderRadius: 12, padding: '14px 18px', cursor: 'pointer', transition: 'all 0.18s' }}>
+
+                  {/* Row 1: score badge + url + date */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {/* Score badge */}
+                    <span style={{ fontSize: 12, fontWeight: 800, padding: '2px 10px', borderRadius: 20, flexShrink: 0, background: col.bg, color: col.color, border: `1px solid ${col.border}`, minWidth: 44, textAlign: 'center' }}>
+                      {score !== null ? score : '—'}
+                    </span>
+
+                    {/* URL / primary identifier */}
+                    <span style={{ flex: 1, color: 'rgba(255,255,255,0.85)', fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: q.url ? "'DM Mono', monospace" : 'inherit' }}>
+                      {q.url || '（无网址）'}
+                    </span>
+
+                    {/* Date + admin email */}
+                    <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 11.5, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {user.role === 'admin' && <span style={{ color: 'rgba(255,255,255,0.18)', fontSize: 11 }}>{q.userEmail}</span>}
+                      {new Date(q.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    </span>
                   </div>
-                )}
-              </div>
-            ))}
+
+                  {/* Row 2: client hint from inquiry */}
+                  {hint && (
+                    <div style={{ marginTop: 5, paddingLeft: 54, color: 'rgba(255,255,255,0.38)', fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {hint}
+                    </div>
+                  )}
+
+                  {/* Expanded detail */}
+                  {selected === i && (
+                    <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 14 }}>
+                      {q.url && (
+                        <div>
+                          <div style={{ color: 'rgba(255,255,255,0.28)', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>公司网址 / 信息</div>
+                          <div style={{ color: '#60a5fa', fontSize: 12.5, fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>{q.url}</div>
+                        </div>
+                      )}
+                      {q.inquiry && (
+                        <div>
+                          <div style={{ color: 'rgba(255,255,255,0.28)', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>询盘信息</div>
+                          <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12.5, lineHeight: 1.65, background: 'rgba(0,0,0,0.18)', borderRadius: 8, padding: '9px 12px', maxHeight: 120, overflowY: 'auto', whiteSpace: 'pre-wrap' }}>{q.inquiry}</div>
+                        </div>
+                      )}
+                      <div>
+                        <div style={{ color: 'rgba(255,255,255,0.28)', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>分析结果</div>
+                        <div style={{ background: 'rgba(0,0,0,0.18)', borderRadius: 8, padding: '14px 16px', maxHeight: 360, overflowY: 'auto' }}>
+                          <MarkdownRenderer content={q.result} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
       }
     </div>
