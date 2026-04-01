@@ -452,11 +452,11 @@ function QueryPage({ user }) {
 
       {/* Input card */}
       <div style={{ background: T.bgElevated, border: `1px solid ${T.border}`, borderRadius: T.radiusLg, padding: '24px 28px', boxShadow: T.shadowCard }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 16, alignItems: 'stretch' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 16 }}>
           <FormItem label="您的公司网址（或公司详细信息）">
             <textarea value={url} onChange={e => setUrl(e.target.value)}
               placeholder={'https://example.com\n\n或提供企业的详细信息，包括但不限于企业定位，企业优势，核心目标客户等'}
-              style={{ ...inputStyle, resize: 'none', minHeight: 96, height: '100%', fontFamily: "'DM Mono',monospace", fontSize: 13 }} />
+              style={{ ...inputStyle, resize: 'none', height: 110, fontFamily: "'DM Mono',monospace", fontSize: 13 }} />
           </FormItem>
           <FormItem label="收到的询盘详细信息（或客户名片）">
             {/* Unified drop zone wrapping textarea + image strip */}
@@ -479,7 +479,7 @@ function QueryPage({ user }) {
               <textarea value={inquiry} onChange={e => setInquiry(e.target.value)}
                 placeholder="粘贴询盘邮件内容、买家联系方式等..."
                 style={{ ...inputStyle, border: 'none', borderRadius: 0, background: 'transparent',
-                  resize: 'none', minHeight: 96, fontSize: 13, boxShadow: 'none',
+                  resize: 'none', height: 110, fontSize: 13, boxShadow: 'none',
                   borderBottom: images.length > 0 ? `1px solid ${T.borderSecond}` : 'none' }} />
 
               {/* Image strip — shown when images uploaded */}
@@ -604,33 +604,47 @@ function HistoryPage({ user }) {
     setSelected(selected === i ? null : i)
   }
 
-  const clientHint = (q) => {
-    // Try inquiry text first
+  // Returns { email, company } — both optional
+  const clientInfo = (q) => {
+    let email = null, company = null
+
+    // From inquiry text
     if (q.inquiry && typeof q.inquiry === 'string') {
       const lines = q.inquiry.split('\n')
       for (const line of lines) {
-        if (line.includes('@') && line.includes('.')) {
+        if (!email && line.includes('@') && line.includes('.')) {
           const parts = line.trim().split(/\s+/)
-          for (const p of parts) { if (p.includes('@')) return p.replace(/[,;]+$/, '') }
+          for (const p of parts) {
+            if (p.includes('@')) { email = p.replace(/[,;]+$/, ''); break }
+          }
         }
-      }
-      for (const line of lines) {
-        if (line.includes('www.') || /[a-z0-9-]+\.(com|net|org|io|co)/i.test(line)) {
+        if (!company && (line.includes('www.') || /[a-z0-9-]+\.(com|net|org|io|co)/i.test(line))) {
           const m = line.match(/(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+\.(?:com|net|org|io|co)[a-z.]*)/i)
-          if (m) return m[0]
+          if (m) company = m[0]
         }
       }
     }
-    // Fallback: extract client name from result (for image-only records)
+
+    // From result (especially for image-only records)
     if (q.result && typeof q.result === 'string') {
-      // Match patterns like "客户名称：Nancy Omoregbe" or "客户名称:  Nancy"
-      const nameMatch = q.result.match(/客户名称[\u003a：][ \t]*([^\uff0c,\u3002.\uff08(\r\n]{2,30})/)
-      if (nameMatch) return nameMatch[1].trim()
-      // Match "Company Name: Beauty Nancy" style
-      const compMatch = q.result.match(/公司名称[\u003a：][ \t]*([^\uff0c,\u3002.\uff08(\r\n]{2,40})/)
-      if (compMatch) return compMatch[1].trim()
+      if (!company) {
+        const cm = q.result.match(/(?:客户公司|公司名称)[：:][ \t]*([^，,。.（(\r\n]{2,40})/)
+        if (cm) company = cm[1].trim()
+      }
+      if (!email && !company) {
+        // Last fallback: person name
+        const nm = q.result.match(/(?:客户名称|联系人)[：:][ \t]*([^，,。.（(\r\n]{2,30})/)
+        if (nm) company = nm[1].trim()
+      }
     }
-    return null
+
+    return { email, company }
+  }
+
+  // Keep clientHint for backward compat (used in visible row)
+  const clientHint = (q) => {
+    const { email, company } = clientInfo(q)
+    return email || company || null
   }
 
   const visible = queries.filter(q => !search ||
@@ -669,7 +683,6 @@ function HistoryPage({ user }) {
         ) : (
           visible.map((q, i) => {
             const score = extractScore(q.result)
-            const hint = clientHint(q)
             const isOpen = selected === i
             return (
               <div key={q.createdAt || i}>
@@ -687,10 +700,15 @@ function HistoryPage({ user }) {
                       {q.url || '—'}
                     </span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
-                    <span style={{ color: T.textSecondary, fontSize: 12.5, fontFamily: "'DM Mono',monospace", whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingRight: 16 }}>
-                      {hint || <span style={{ color: T.textDisabled }}>—</span>}
-                    </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0, gap: 2 }}>
+                    {(() => {
+                      const { email, company } = clientInfo(q)
+                      return <>
+                        {company && <span style={{ color: T.textSecondary, fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingRight: 16 }}>{company}</span>}
+                        {email && <span style={{ color: T.textTertiary, fontSize: 11.5, fontFamily: "'DM Mono',monospace", whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingRight: 16 }}>{email}</span>}
+                        {!company && !email && <span style={{ color: T.textDisabled }}>—</span>}
+                      </>
+                    })()}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
                     <span style={{ color: T.textTertiary, fontSize: 11.5 }}>
