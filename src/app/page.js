@@ -194,12 +194,21 @@ function QueryPage({ user }) {
   const riskLabel = { high: '高风险', medium: '中风险', low: '低风险', unknown: '未知' }
   const extractRisk = t => /高风险/.test(t) ? 'high' : /中风险/.test(t) ? 'medium' : /低风险/.test(t) ? 'low' : 'unknown'
 
-  // Extract numeric score like "88 / 100" or "88/100" or "88分" from result text
+  // Extract numeric score — prioritise X/100 format, ignore X/5 ratings
   const extractScore = (t) => {
-    const m = t.match(/(\d{1,3})\s*[\/分]\s*(?:100\s*)?(?:分|点)?/) || t.match(/(\d{1,3})\s*分/)
-    if (!m) return null
-    const n = parseInt(m[1])
-    return (n >= 0 && n <= 100) ? n : null
+    // First: look for explicit X / 100 pattern (most reliable)
+    const m100 = t.match(/(\d{1,3})\s*\/\s*100/)
+    if (m100) {
+      const n = parseInt(m100[1])
+      if (n >= 0 && n <= 100) return n
+    }
+    // Second: look for "XX分" where XX is 2+ digits (avoid single digit like 5分)
+    const mFen = t.match(/(\d{2,3})\s*分/)
+    if (mFen) {
+      const n = parseInt(mFen[1])
+      if (n >= 0 && n <= 100) return n
+    }
+    return null
   }
 
   const scoreColor = (s) => {
