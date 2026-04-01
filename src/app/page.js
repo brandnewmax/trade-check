@@ -348,8 +348,24 @@ function QueryPage({ user }) {
   const analyze = async () => {
     if (!url.trim() && !inquiry.trim()) { setError('请至少填写公司网址或询盘信息'); return }
     setLoading(true); setError(''); setResult(''); setStreaming(true)
+
+    const abortCtrl = new AbortController()
+    // Safety timeout: abort if no data received for 30s
+    let lastDataAt = Date.now()
+    const watchdog = setInterval(() => {
+      if (Date.now() - lastDataAt > 30000) {
+        abortCtrl.abort()
+        clearInterval(watchdog)
+      }
+    }, 5000)
+
     try {
-      const res = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, inquiry }) })
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, inquiry }),
+        signal: abortCtrl.signal,
+      })
       if (!res.ok) {
         const text = await res.text()
         let msg = `服务器错误 ${res.status}`
@@ -362,12 +378,14 @@ function QueryPage({ user }) {
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
+        lastDataAt = Date.now() // reset watchdog on any data
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
         buffer = lines.pop() ?? ''
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue
           const raw = line.slice(6).trim()
+          if (raw === '') continue // heartbeat comment line
           try {
             const msg = JSON.parse(raw)
             if (msg.error) throw new Error(msg.error)
@@ -378,8 +396,18 @@ function QueryPage({ user }) {
           } catch (e) { if (e.message !== 'Unexpected end of JSON input') throw e }
         }
       }
-    } catch (e) { setError(e.message); setResult('') }
-    finally { setLoading(false); setStreaming(false) }
+    } catch (e) {
+      if (e.name === 'AbortError') {
+        setError('连接超时：30秒内未收到响应，请重试。如持续出现，请检查 API 配置。')
+      } else {
+        setError(e.message)
+      }
+      setResult('')
+    } finally {
+      clearInterval(watchdog)
+      setLoading(false)
+      setStreaming(false)
+    }
   }
 
   const score = extractScore(result)
@@ -452,18 +480,47 @@ function QueryPage({ user }) {
 }
 
 // ─── HISTORY PAGE ─────────────────────────────────────────────────────────────
+// Check if a record is valid/expandable
+function isValidRecord(q) {
+  if (!q || typeof q !== 'object') return false
+  // Must have at least a createdAt timestamp
+  if (!q.createdAt) return false
+  // result must be a non-empty string if present
+  if (q.result !== undefined && (typeof q.result !== 'string' || q.result.trim() === '')) return false
+  return true
+}
+
 function HistoryPage({ user }) {
   const [queries, setQueries] = useState([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
   const [search, setSearch] = useState('')
+  const [expandError, setExpandError] = useState({})
 
   useEffect(() => {
-    fetch('/api/queries').then(r => r.json()).then(d => { setQueries(Array.isArray(d) ? d : []); setLoading(false) })
+    fetch('/api/queries').then(r => r.json()).then(d => {
+      if (Array.isArray(d)) {
+        // Auto-filter out invalid/broken records on load
+        const valid = d.filter(isValidRecord)
+        setQueries(valid)
+      }
+      setLoading(false)
+    })
   }, [])
 
+  // Safe expand: catch any error and mark that record as broken
+  const handleExpand = (i, q) => {
+    if (expandError[i]) return // already known broken, don't expand
+    if (!isValidRecord(q)) {
+      // Mark as broken silently
+      setExpandError(prev => ({ ...prev, [i]: true }))
+      return
+    }
+    setSelected(selected === i ? null : i)
+  }
+
   const clientHint = (q) => {
-    if (!q.inquiry) return null
+    if (!q.inquiry || typeof q.inquiry !== 'string') return null
     const lines = q.inquiry.split('\n')
     for (const line of lines) {
       if (line.includes('@') && line.includes('.')) {
@@ -521,9 +578,9 @@ function HistoryPage({ user }) {
             return (
               <div key={q.createdAt || i}>
                 {/* Table row */}
-                <div onClick={() => setSelected(isOpen ? null : i)}
-                  style={{ display: 'grid', gridTemplateColumns: '72px 1fr 1fr 100px', gap: 0, padding: '13px 20px', cursor: 'pointer', borderBottom: `1px solid ${T.borderSecond}`, background: isOpen ? T.primaryBg : 'transparent', transition: 'background 0.15s' }}
-                  onMouseEnter={e => { if (!isOpen) e.currentTarget.style.background = 'rgba(0,0,0,0.02)' }}
+                <div onClick={() => handleExpand(i, q)}
+                  style={{ display: 'grid', gridTemplateColumns: '72px 1fr 1fr 100px', gap: 0, padding: '13px 20px', cursor: expandError[i] ? 'default' : 'pointer', borderBottom: `1px solid ${T.borderSecond}`, background: isOpen ? T.primaryBg : 'transparent', transition: 'background 0.15s', opacity: expandError[i] ? 0.4 : 1 }}
+                  onMouseEnter={e => { if (!isOpen && !expandError[i]) e.currentTarget.style.background = 'rgba(0,0,0,0.02)' }}
                   onMouseLeave={e => { if (!isOpen) e.currentTarget.style.background = 'transparent' }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center' }}>

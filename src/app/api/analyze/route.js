@@ -3,7 +3,6 @@ export const dynamic = 'force-dynamic'
 import { requireSession } from '@/lib/auth'
 import { getGlobalSettings, getUserSettings, saveQuery } from '@/lib/kv'
 
-
 export async function POST(req) {
   const { session, error, status } = await requireSession()
   if (error) return Response.json({ error }, { status })
@@ -64,8 +63,22 @@ export async function POST(req) {
   const encoder = new TextEncoder()
   const decoder = new TextDecoder()
 
+  // Heartbeat: send a comment line every 15s to keep the connection alive
+  // SSE comment lines (": ping\n\n") are ignored by the client but prevent proxy timeouts
+  const HEARTBEAT_INTERVAL = 15000
+  let heartbeatTimer = null
+
   const stream = new ReadableStream({
     async start(controller) {
+      const enqueue = (data) => {
+        try { controller.enqueue(encoder.encode(data)) } catch {}
+      }
+
+      // Start heartbeat
+      heartbeatTimer = setInterval(() => {
+        enqueue(': ping\n\n')
+      }, HEARTBEAT_INTERVAL)
+
       const reader = upstreamRes.body.getReader()
       let fullText = ''
       let buffer = ''
@@ -74,8 +87,8 @@ export async function POST(req) {
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
-          buffer += decoder.decode(value, { stream: true })
 
+          buffer += decoder.decode(value, { stream: true })
           const lines = buffer.split('\n')
           buffer = lines.pop() ?? ''
 
@@ -88,20 +101,22 @@ export async function POST(req) {
               const delta = parsed.choices?.[0]?.delta?.content || ''
               if (delta) {
                 fullText += delta
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ delta })}\n\n`))
+                enqueue(`data: ${JSON.stringify({ delta })}\n\n`)
               }
             } catch {}
           }
         }
       } catch (e) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: `流中断：${e.message}` })}\n\n`))
+        enqueue(`data: ${JSON.stringify({ error: `流中断：${e.message}` })}\n\n`)
       } finally {
+        clearInterval(heartbeatTimer)
+
         if (fullText) {
           const riskLevel = fullText.includes('高风险') ? 'high'
             : fullText.includes('中风险') ? 'medium'
             : fullText.includes('低风险') ? 'low' : 'unknown'
 
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, result: fullText, riskLevel })}\n\n`))
+          enqueue(`data: ${JSON.stringify({ done: true, result: fullText, riskLevel })}\n\n`)
 
           saveQuery({
             userEmail: session.email,
@@ -113,18 +128,24 @@ export async function POST(req) {
             model: modelName,
           }).catch(() => {})
         } else {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'AI 返回空内容，请检查 Model Name 是否正确' })}\n\n`))
+          enqueue(`data: ${JSON.stringify({ error: 'AI 返回空内容，请检查 Model Name 是否正确' })}\n\n`)
         }
-        controller.close()
+
+        try { controller.close() } catch {}
       }
+    },
+
+    cancel() {
+      clearInterval(heartbeatTimer)
     }
   })
 
   return new Response(stream, {
     headers: {
       'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'no-cache, no-transform',
       'X-Accel-Buffering': 'no',
+      'Connection': 'keep-alive',
     },
   })
 }
