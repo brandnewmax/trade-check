@@ -1,6 +1,8 @@
 import { requireSession } from '@/lib/auth'
 import { getGlobalSettings, getUserSettings, saveQuery } from '@/lib/kv'
 
+// Node runtime — stream proxying keeps connection alive beyond default timeout
+export const runtime = 'nodejs'
 export const maxDuration = 60
 
 export async function POST(req) {
@@ -42,7 +44,7 @@ export async function POST(req) {
       },
       body: JSON.stringify({
         model: modelName,
-        stream: false,
+        stream: true,
         messages: [
           ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
           { role: 'user', content: userContent },
@@ -50,52 +52,80 @@ export async function POST(req) {
       }),
     })
   } catch (e) {
-    return Response.json({ error: `无法连接到 API (${endpoint})：${e.message}` }, { status: 502 })
-  }
-
-  // Read raw text first — never assume JSON
-  let rawText = ''
-  try { rawText = await upstreamRes.text() } catch (e) {
-    return Response.json({ error: `读取 API 响应失败：${e.message}` }, { status: 502 })
+    return Response.json({ error: `无法连接到 API：${e.message}` }, { status: 502 })
   }
 
   if (!upstreamRes.ok) {
-    // Try to extract message from JSON error body
-    let detail = rawText
-    try { detail = JSON.parse(rawText)?.error?.message || rawText } catch {}
-    return Response.json({
-      error: `上游 API 错误 ${upstreamRes.status}：${detail.slice(0, 300)}`
-    }, { status: 502 })
+    let detail = ''
+    try { detail = await upstreamRes.text() } catch {}
+    try { detail = JSON.parse(detail)?.error?.message || detail } catch {}
+    return Response.json({ error: `API 错误 ${upstreamRes.status}：${detail.slice(0, 300)}` }, { status: 502 })
   }
 
-  // Parse successful response
-  let result = ''
-  try {
-    const parsed = JSON.parse(rawText)
-    result = parsed.choices?.[0]?.message?.content || ''
-  } catch {
-    return Response.json({
-      error: `API 返回了非 JSON 内容：${rawText.slice(0, 300)}`
-    }, { status: 502 })
-  }
+  const encoder = new TextEncoder()
+  const decoder = new TextDecoder()
 
-  if (!result) {
-    return Response.json({ error: 'AI 返回空内容，请检查 Model Name 是否正确' }, { status: 502 })
-  }
+  const stream = new ReadableStream({
+    async start(controller) {
+      const reader = upstreamRes.body.getReader()
+      let fullText = ''
+      let buffer = ''
 
-  const riskLevel = result.includes('高风险') ? 'high'
-    : result.includes('中风险') ? 'medium'
-    : result.includes('低风险') ? 'low' : 'unknown'
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
 
-  await saveQuery({
-    userEmail: session.email,
-    url: url?.trim() || '',
-    inquiry: inquiry?.trim() || '',
-    result,
-    riskLevel,
-    createdAt: new Date().toISOString(),
-    model: modelName,
-  }).catch(console.error)
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
 
-  return Response.json({ result, riskLevel })
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            const data = line.slice(6).trim()
+            if (data === '[DONE]') continue
+            try {
+              const parsed = JSON.parse(data)
+              const delta = parsed.choices?.[0]?.delta?.content || ''
+              if (delta) {
+                fullText += delta
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ delta })}\n\n`))
+              }
+            } catch {}
+          }
+        }
+      } catch (e) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: `流中断：${e.message}` })}\n\n`))
+      } finally {
+        if (fullText) {
+          const riskLevel = fullText.includes('高风险') ? 'high'
+            : fullText.includes('中风险') ? 'medium'
+            : fullText.includes('低风险') ? 'low' : 'unknown'
+
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, result: fullText, riskLevel })}\n\n`))
+
+          saveQuery({
+            userEmail: session.email,
+            url: url?.trim() || '',
+            inquiry: inquiry?.trim() || '',
+            result: fullText,
+            riskLevel,
+            createdAt: new Date().toISOString(),
+            model: modelName,
+          }).catch(() => {})
+        } else {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'AI 返回空内容，请检查 Model Name 是否正确' })}\n\n`))
+        }
+        controller.close()
+      }
+    }
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'X-Accel-Buffering': 'no',
+    },
+  })
 }

@@ -83,6 +83,7 @@ function QueryPage({ user }) {
     if (!url.trim() && !inquiry.trim()) { setError('请至少填写公司网址或询盘信息'); return }
     setLoading(true); setError(''); setResult('')
 
+    setStreaming(true)
     try {
       const res = await fetch('/api/analyze', {
         method: 'POST',
@@ -90,20 +91,49 @@ function QueryPage({ user }) {
         body: JSON.stringify({ url, inquiry }),
       })
 
-      // Safely parse — Vercel sometimes returns plain text errors
-      const text = await res.text()
-      let data
-      try { data = JSON.parse(text) }
-      catch { throw new Error(`服务器返回异常：${text.slice(0, 200)}`) }
+      // Pre-stream errors (4xx before body starts)
+      if (!res.ok) {
+        const text = await res.text()
+        let msg = `服务器错误 ${res.status}`
+        try { msg = JSON.parse(text).error || msg } catch {}
+        throw new Error(msg)
+      }
 
-      if (!res.ok) throw new Error(data.error || `服务器错误 ${res.status}`)
-      setResult(data.result || '')
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const raw = line.slice(6).trim()
+          try {
+            const msg = JSON.parse(raw)
+            if (msg.error) throw new Error(msg.error)
+            if (msg.delta) {
+              setResult(prev => {
+                const next = prev + msg.delta
+                return next
+              })
+              if (resultRef.current) resultRef.current.scrollTop = resultRef.current.scrollHeight
+            }
+          } catch (e) { if (e.message !== 'Unexpected end of JSON input') throw e }
+        }
+      }
 
     } catch (e) {
       setError(e.message)
       setResult('')
     } finally {
       setLoading(false)
+      setStreaming(false)
     }
   }
 
@@ -158,8 +188,8 @@ function QueryPage({ user }) {
                 {riskLabel[extractRisk(result)]}
               </span>
             )}
-            {loading && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#60a5fa', fontSize: 12 }}><Spinner size={12} />分析中...</div>
+            {streaming && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#60a5fa', fontSize: 12 }}><Spinner size={12} />生成中...</div>
             )}
           </div>
           <div style={{ flex: 1, minHeight: 380, background: 'rgba(0,0,0,0.18)', borderRadius: 10, padding: 16, overflowY: 'auto', whiteSpace: 'pre-wrap', color: result ? 'rgba(255,255,255,0.82)' : 'rgba(255,255,255,0.2)', fontSize: 13.5, lineHeight: 1.85 }}>
