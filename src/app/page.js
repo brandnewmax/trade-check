@@ -624,11 +624,13 @@ function HistoryPage({ user }) {
     // Fallback: extract client name from result (for image-only records)
     if (q.result && typeof q.result === 'string') {
       // Match patterns like "客户名称：Nancy Omoregbe" or "客户名称:  Nancy"
-      const nameMatch = q.result.match(/客户名称[：:]\s*([^
+      const nameMatch = q.result.match(/客户名称[\u003a：][ \t]*([^\uff0c,\u3002.\uff08(\r\n]{2,30})/)
+]*([^
 ，,。.（(]{2,30})/)
       if (nameMatch) return nameMatch[1].trim()
       // Match "Company Name: Beauty Nancy" style
-      const compMatch = q.result.match(/公司名称[：:]\s*([^
+      const compMatch = q.result.match(/公司名称[\u003a：][ \t]*([^\uff0c,\u3002.\uff08(\r\n]{2,40})/)
+]*([^
 ，,。.（(]{2,40})/)
       if (compMatch) return compMatch[1].trim()
     }
