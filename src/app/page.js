@@ -425,12 +425,12 @@ function QueryPage({ user }) {
       {/* Input card */}
       <div style={{ background: T.bgElevated, border: `1px solid ${T.border}`, borderRadius: T.radiusLg, padding: '24px 28px', boxShadow: T.shadowCard }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 16 }}>
-          <FormItem label="公司网址（或公司详细信息）">
+          <FormItem label="您的公司网址（或公司详细信息）">
             <textarea value={url} onChange={e => setUrl(e.target.value)}
-              placeholder={'https://example.com\n\n或粘贴公司名称、地址、联系方式...'}
+              placeholder={'https://example.com\n\n或提供企业的详细信息，包括但不限于企业定位，企业优势，核心目标客户等'}
               style={{ ...inputStyle, resize: 'none', minHeight: 96, fontFamily: "'DM Mono',monospace", fontSize: 13 }} />
           </FormItem>
-          <FormItem label="询盘详细信息">
+          <FormItem label="收到的询盘详细信息（或客户名片）">
             <textarea value={inquiry} onChange={e => setInquiry(e.target.value)}
               placeholder="粘贴询盘邮件内容、买家联系方式等..."
               style={{ ...inputStyle, resize: 'none', minHeight: 96, fontSize: 13 }} />
