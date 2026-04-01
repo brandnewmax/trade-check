@@ -452,59 +452,70 @@ function QueryPage({ user }) {
 
       {/* Input card */}
       <div style={{ background: T.bgElevated, border: `1px solid ${T.border}`, borderRadius: T.radiusLg, padding: '24px 28px', boxShadow: T.shadowCard }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 16, alignItems: 'stretch' }}>
           <FormItem label="您的公司网址（或公司详细信息）">
             <textarea value={url} onChange={e => setUrl(e.target.value)}
               placeholder={'https://example.com\n\n或提供企业的详细信息，包括但不限于企业定位，企业优势，核心目标客户等'}
-              style={{ ...inputStyle, resize: 'none', minHeight: 96, fontFamily: "'DM Mono',monospace", fontSize: 13 }} />
+              style={{ ...inputStyle, resize: 'none', minHeight: 96, height: '100%', fontFamily: "'DM Mono',monospace", fontSize: 13 }} />
           </FormItem>
           <FormItem label="收到的询盘详细信息（或客户名片）">
-            <textarea value={inquiry} onChange={e => setInquiry(e.target.value)}
-              placeholder="粘贴询盘邮件内容、买家联系方式等..."
-              style={{ ...inputStyle, resize: 'none', minHeight: 96, fontSize: 13 }} />
-
-            {/* Image drop zone */}
+            {/* Unified drop zone wrapping textarea + image strip */}
             <div
               onDrop={handleDrop}
               onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-              onDragLeave={() => setDragOver(false)}
-              onClick={() => fileInputRef.current?.click()}
+              onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false) }}
               style={{
-                marginTop: 8, border: `1.5px dashed ${dragOver ? T.primary : T.border}`,
-                borderRadius: T.radiusMd, padding: images.length > 0 ? '10px 12px' : '12px',
-                background: dragOver ? T.primaryBg : T.bgContainer,
-                cursor: 'pointer', transition: 'all 0.15s',
+                border: `1.5px solid ${dragOver ? T.primary : T.border}`,
+                borderRadius: T.radiusMd,
+                background: dragOver ? T.primaryBg : T.bgInput,
+                transition: 'border-color 0.15s, background 0.15s',
+                overflow: 'hidden',
               }}
             >
               <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
                 onChange={e => { processFiles(e.target.files); e.target.value = '' }} />
 
-              {images.length === 0 ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: T.textTertiary, fontSize: 13 }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="1.8"/>
-                    <circle cx="8.5" cy="8.5" r="1.5" stroke="currentColor" strokeWidth="1.8"/>
-                    <path d="M21 15l-5-5L5 21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                  </svg>
-                  <span>拖拽或点击上传名片/图片（最多4张，支持 JPG、PNG）</span>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+              {/* Textarea — no own border, lives inside the drop zone */}
+              <textarea value={inquiry} onChange={e => setInquiry(e.target.value)}
+                placeholder="粘贴询盘邮件内容、买家联系方式等..."
+                style={{ ...inputStyle, border: 'none', borderRadius: 0, background: 'transparent',
+                  resize: 'none', minHeight: 96, fontSize: 13, boxShadow: 'none',
+                  borderBottom: images.length > 0 ? `1px solid ${T.borderSecond}` : 'none' }} />
+
+              {/* Image strip — shown when images uploaded */}
+              {images.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '10px 12px', alignItems: 'center' }}>
                   {images.map((img, idx) => (
                     <div key={idx} style={{ position: 'relative', flexShrink: 0 }}>
                       <img src={img.preview} alt={img.name}
-                        style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: T.radiusSm, border: `1px solid ${T.border}`, display: 'block' }} />
+                        style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: T.radiusSm, border: `1px solid ${T.border}`, display: 'block' }} />
                       <button onClick={e => { e.stopPropagation(); removeImage(idx) }}
-                        style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', background: T.error, border: 'none', color: '#fff', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, padding: 0 }}>
+                        style={{ position: 'absolute', top: -5, right: -5, width: 17, height: 17, borderRadius: '50%', background: T.error, border: 'none', color: '#fff', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
                         ×
                       </button>
                     </div>
                   ))}
                   {images.length < 4 && (
-                    <div style={{ width: 64, height: 64, border: `1.5px dashed ${T.border}`, borderRadius: T.radiusSm, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.textTertiary, fontSize: 22 }}>+</div>
+                    <div onClick={() => fileInputRef.current?.click()}
+                      style={{ width: 60, height: 60, border: `1.5px dashed ${T.border}`, borderRadius: T.radiusSm, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.textTertiary, fontSize: 20, cursor: 'pointer' }}>+</div>
                   )}
                 </div>
               )}
+
+              {/* Bottom hint bar */}
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px 8px',
+                  color: dragOver ? T.primary : T.textDisabled, fontSize: 12, cursor: 'pointer',
+                  borderTop: `1px solid ${T.borderSecond}`, transition: 'color 0.15s' }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                  <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="1.8"/>
+                  <circle cx="8.5" cy="8.5" r="1.5" stroke="currentColor" strokeWidth="1.8"/>
+                  <path d="M21 15l-5-5L5 21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                </svg>
+                <span>{dragOver ? '松开即可上传' : '拖拽到此区域或点击上传名片/图片（最多4张，JPG、PNG）'}</span>
+              </div>
             </div>
           </FormItem>
         </div>
@@ -594,19 +605,32 @@ function HistoryPage({ user }) {
   }
 
   const clientHint = (q) => {
-    if (!q.inquiry || typeof q.inquiry !== 'string') return null
-    const lines = q.inquiry.split('\n')
-    for (const line of lines) {
-      if (line.includes('@') && line.includes('.')) {
-        const parts = line.trim().split(/\s+/)
-        for (const p of parts) { if (p.includes('@')) return p.replace(/[,;]+$/, '') }
+    // Try inquiry text first
+    if (q.inquiry && typeof q.inquiry === 'string') {
+      const lines = q.inquiry.split('\n')
+      for (const line of lines) {
+        if (line.includes('@') && line.includes('.')) {
+          const parts = line.trim().split(/\s+/)
+          for (const p of parts) { if (p.includes('@')) return p.replace(/[,;]+$/, '') }
+        }
+      }
+      for (const line of lines) {
+        if (line.includes('www.') || /[a-z0-9-]+\.(com|net|org|io|co)/i.test(line)) {
+          const m = line.match(/(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+\.(?:com|net|org|io|co)[a-z.]*)/i)
+          if (m) return m[0]
+        }
       }
     }
-    for (const line of lines) {
-      if (line.includes('www.') || /[a-z0-9-]+\.(com|net|org|io|co)/i.test(line)) {
-        const m = line.match(/(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+\.(?:com|net|org|io|co)[a-z.]*)/i)
-        if (m) return m[0]
-      }
+    // Fallback: extract client name from result (for image-only records)
+    if (q.result && typeof q.result === 'string') {
+      // Match patterns like "客户名称：Nancy Omoregbe" or "客户名称:  Nancy"
+      const nameMatch = q.result.match(/客户名称[：:]\s*([^
+，,。.（(]{2,30})/)
+      if (nameMatch) return nameMatch[1].trim()
+      // Match "Company Name: Beauty Nancy" style
+      const compMatch = q.result.match(/公司名称[：:]\s*([^
+，,。.（(]{2,40})/)
+      if (compMatch) return compMatch[1].trim()
     }
     return null
   }
