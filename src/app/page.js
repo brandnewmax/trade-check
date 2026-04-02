@@ -844,8 +844,13 @@ function SettingsPage({ user }) {
           </FormItem>
 
           <FormItem label="Model Name">
-            <input value={form.modelName || ''} onChange={e => setForm({ ...form, modelName: e.target.value })}
-              placeholder="gpt-4o / gemini-2.0-flash" style={{ ...inputStyle, fontFamily: "'DM Mono',monospace", fontSize: 12.5 }} />
+            <select value={form.modelName || ''} onChange={e => setForm({ ...form, modelName: e.target.value })}              style={{ ...inputStyle, fontFamily: "'DM Mono',monospace", fontSize: 12.5, cursor: 'pointer', appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M6 9l6 6 6-6' stroke='%239c8a72' strokeWidth='2' strokeLinecap='round'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32 }}>
+              <option value="" disabled>选择模型...</option>
+              <option value="claude-sonnet-4-6">claude-sonnet-4-6</option>
+              <option value="gemini-3.1-pro-preview-vertex">gemini-3.1-pro-preview-vertex</option>
+              <option value="gemini-3-pro-preview-thinking">gemini-3-pro-preview-thinking</option>
+              <option value="gpt-5.4">gpt-5.4</option>
+            </select>
           </FormItem>
 
           <div style={{ background: T.primaryBg, border: `1px solid ${T.primaryBorder}`, borderRadius: T.radiusMd, padding: '9px 12px' }}>

@@ -29,3 +29,17 @@ textarea { resize: vertical; }
 ::-webkit-scrollbar-thumb { background: rgba(26,19,9,0.15); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(26,19,9,0.25); }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+select {
+  font-family: inherit;
+  font-size: inherit;
+}
+select:focus {
+  outline: none;
+  border-color: rgba(180,83,9,0.4) !important;
+  box-shadow: 0 0 0 2px rgba(180,83,9,0.1) !important;
+}
+select option {
+  background: #f0ece4;
+  color: #1a1309;
+}
