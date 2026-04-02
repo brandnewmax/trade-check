@@ -208,8 +208,7 @@ function MarkdownRenderer({ content }) {
               参考回复邮件
             </div>
             <div style={{ padding: '16px 20px', fontFamily: "'Georgia', serif", fontSize: 14, lineHeight: 2, color: T.textPrimary, whiteSpace: 'pre-wrap' }}>
-              {emailLines.join('
-')}
+              {emailLines.join('\n')}
             </div>
           </div>
         )
