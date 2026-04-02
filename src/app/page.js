@@ -347,10 +347,12 @@ function QueryPage({ user }) {
   const [loading, setLoading] = useState(false)
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState({})
   const resultRef = useRef(null)
   const fileInputRef = useRef(null)
 
   const processFiles = (files) => {
+    setFieldErrors(p => ({...p, inquiry: null}))
     const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
     const valid = Array.from(files).filter(f => allowed.includes(f.type)).slice(0, 4)
     valid.forEach(file => {
@@ -375,13 +377,27 @@ function QueryPage({ user }) {
 
   const removeImage = (idx) => setImages(prev => prev.filter((_, i) => i !== idx))
 
+  const abortCtrlRef = useRef(null)
+
+  const stopAnalyze = () => {
+    if (abortCtrlRef.current) {
+      abortCtrlRef.current.abort()
+      abortCtrlRef.current = null
+    }
+  }
+
   const analyze = async () => {
-    if (!url.trim() && !inquiry.trim() && images.length === 0) { setError('请填写信息或上传图片'); return }
+    // Per-field validation
+    const errs = {}
+    if (!url.trim()) errs.url = '请填写您的公司网址或公司信息'
+    if (!inquiry.trim() && images.length === 0) errs.inquiry = '请填写询盘信息或上传名片图片'
+    if (Object.keys(errs).length > 0) { setFieldErrors(errs); return }
+    setFieldErrors({})
     setLoading(true); setError(''); setResult(''); setStreaming(true)
 
     const abortCtrl = new AbortController()
+    abortCtrlRef.current = abortCtrl
     // Safety timeout: abort if no real content received for 60s
-    // (heartbeat pings keep connection alive but don't reset this timer)
     let lastContentAt = Date.now()
     const watchdog = setInterval(() => {
       if (Date.now() - lastContentAt > 60000) {
@@ -437,6 +453,7 @@ function QueryPage({ user }) {
       setResult('')
     } finally {
       clearInterval(watchdog)
+      abortCtrlRef.current = null
       setLoading(false)
       setStreaming(false)
     }
@@ -457,9 +474,10 @@ function QueryPage({ user }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 16, alignItems: 'stretch' }}>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             <div style={{ color: T.textSecondary, fontSize: 13, fontWeight: 500, marginBottom: 6 }}>您的公司网址（或公司详细信息）</div>
-            <textarea value={url} onChange={e => setUrl(e.target.value)}
+            <textarea value={url} onChange={e => { setUrl(e.target.value); if (e.target.value.trim()) setFieldErrors(p => ({...p, url: null})) }}
               placeholder={'https://example.com\n\n或提供企业的详细信息，包括但不限于企业定位，企业优势，核心目标客户等'}
-              style={{ ...inputStyle, resize: 'none', flex: 1, fontFamily: "'DM Mono',monospace", fontSize: 13 }} />
+              style={{ ...inputStyle, resize: 'none', flex: 1, fontFamily: "'DM Mono',monospace", fontSize: 13, borderColor: fieldErrors.url ? T.error : undefined }} />
+            {fieldErrors.url && <div style={{ color: T.error, fontSize: 12, marginTop: 4 }}>⚠ {fieldErrors.url}</div>}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             <div style={{ color: T.textSecondary, fontSize: 13, fontWeight: 500, marginBottom: 6 }}>收到的询盘详细信息（或客户名片）</div>
@@ -468,6 +486,14 @@ function QueryPage({ user }) {
               onDrop={handleDrop}
               onDragOver={e => { e.preventDefault(); setDragOver(true) }}
               onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false) }}
+              onPaste={e => {
+                const items = Array.from(e.clipboardData?.items || [])
+                const imageItems = items.filter(item => item.type.startsWith('image/'))
+                if (imageItems.length > 0) {
+                  e.preventDefault()
+                  processFiles(imageItems.map(item => item.getAsFile()).filter(Boolean))
+                }
+              }}
               style={{
                 border: `1.5px solid ${dragOver ? T.primary : T.border}`,
                 borderRadius: T.radiusMd,
@@ -480,8 +506,16 @@ function QueryPage({ user }) {
                 onChange={e => { processFiles(e.target.files); e.target.value = '' }} />
 
               {/* Textarea — no own border, lives inside the drop zone */}
-              <textarea value={inquiry} onChange={e => setInquiry(e.target.value)}
-                placeholder="粘贴询盘邮件内容、买家联系方式等..."
+              <textarea value={inquiry} onChange={e => { setInquiry(e.target.value); if (e.target.value.trim()) setFieldErrors(p => ({...p, inquiry: null})) }}
+                placeholder="粘贴询盘邮件内容、买家联系方式等...（可直接粘贴截图）"
+                onPaste={e => {
+                  const items = Array.from(e.clipboardData?.items || [])
+                  const imageItems = items.filter(item => item.type.startsWith('image/'))
+                  if (imageItems.length > 0) {
+                    e.preventDefault()
+                    processFiles(imageItems.map(item => item.getAsFile()).filter(Boolean))
+                  }
+                }}
                 style={{ ...inputStyle, border: 'none', borderRadius: 0, background: 'transparent',
                   resize: 'none', height: 110, fontSize: 13, boxShadow: 'none',
                   borderBottom: images.length > 0 ? `1px solid ${T.borderSecond}` : 'none' }} />
@@ -510,8 +544,8 @@ function QueryPage({ user }) {
               <div
                 onClick={() => fileInputRef.current?.click()}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px 8px',
-                  color: dragOver ? T.primary : T.textDisabled, fontSize: 12, cursor: 'pointer',
-                  borderTop: `1px solid ${T.borderSecond}`, transition: 'color 0.15s' }}
+                  color: dragOver ? T.primary : fieldErrors.inquiry ? T.error : T.textDisabled, fontSize: 12, cursor: 'pointer',
+                  borderTop: `1px solid ${fieldErrors.inquiry ? T.error : T.borderSecond}`, transition: 'color 0.15s' }}
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
                   <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="1.8"/>
@@ -531,12 +565,20 @@ function QueryPage({ user }) {
           </div>
         )}
 
-        <button onClick={analyze} disabled={loading} style={{ width: '100%', padding: '10px', border: 'none', borderRadius: T.radiusMd, cursor: loading ? 'wait' : 'pointer', background: loading ? 'rgba(180,83,9,0.5)' : T.primary, color: '#fff', fontSize: 15, fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, letterSpacing: '0.01em' }}>
-          {loading
-            ? <><Spinner color="#fff" />AI 分析中...</>
-            : <><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M13 10V3L4 14h7v7l9-11h-7z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>开始背调分析</>
-          }
-        </button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={loading ? undefined : analyze} disabled={loading} style={{ flex: 1, padding: '10px', border: 'none', borderRadius: T.radiusMd, cursor: loading ? 'default' : 'pointer', background: loading ? 'rgba(180,83,9,0.35)' : T.primary, color: '#fff', fontSize: 15, fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, letterSpacing: '0.01em' }}>
+            {loading
+              ? <><Spinner color="#fff" />AI 分析中...</>
+              : <><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M13 10V3L4 14h7v7l9-11h-7z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>开始背调分析</>
+            }
+          </button>
+          {loading && (
+            <button onClick={stopAnalyze} style={{ padding: '10px 20px', border: `1px solid ${T.border}`, borderRadius: T.radiusMd, cursor: 'pointer', background: T.bgElevated, color: T.textSecondary, fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, transition: 'all 0.15s' }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor"/></svg>
+              停止
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Result card */}
