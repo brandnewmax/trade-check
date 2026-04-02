@@ -951,28 +951,6 @@ function Layout({ user, onLogout, page, setPage, children }) {
           })}
         </nav>
 
-        {/* Feature intro — shown on query page */}
-        {page === 'query' && (
-          <div style={{ margin: '12px 0', padding: '14px 10px', borderTop: `1px solid ${T.borderSecond}`, borderBottom: `1px solid ${T.borderSecond}` }}>
-            <div style={{ color: T.textTertiary, fontSize: 10.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>分析维度</div>
-            {[
-              { num: '01', color: '#b45309', title: '客户身份穿透', desc: '还原询盘背后的真实企业，识别决策人层级与采购实力' },
-              { num: '02', color: '#b45309', title: '询盘质量评分', desc: '量化评估线索价值，拦截垃圾询盘，锁定高净值买家' },
-              { num: '03', color: '#15803d', title: '供需匹配分析', desc: '比对客户需求与您的业务优势，判断是否"门当户对"' },
-              { num: '04', color: '#1d4ed8', title: '破冰策略建议', desc: '针对不同评分等级，给出定制化的首次沟通切入点' },
-              { num: '05', color: '#1d4ed8', title: '回复邮件草稿', desc: '生成符合老外采购逻辑的高转化初次回复，缩短响应时间' },
-            ].map(({ num, color, title, desc }) => (
-              <div key={num} style={{ display: 'flex', gap: 10, marginBottom: 12, alignItems: 'flex-start' }}>
-                <div style={{ width: 22, height: 22, borderRadius: 6, background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 9.5, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>{num}</div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ color: T.textPrimary, fontSize: 12, fontWeight: 600, marginBottom: 2 }}>{title}</div>
-                  <div style={{ color: T.textTertiary, fontSize: 11, lineHeight: 1.5 }}>{desc}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
         {/* User */}
         <div style={{ borderTop: `1px solid ${T.borderSecond}`, paddingTop: 12, marginTop: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '6px 8px', marginBottom: 8, borderRadius: T.radiusMd, background: T.bgContainer }}>
@@ -991,8 +969,37 @@ function Layout({ user, onLogout, page, setPage, children }) {
         </div>
       </aside>
 
-      {/* Main */}
-      <main style={{ flex: 1, overflow: 'hidden', padding: '24px 32px', display: 'flex', flexDirection: 'column' }}>{children}</main>
+      {/* Main + optional right panel */}
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
+        <main style={{ flex: 1, overflow: 'hidden', padding: '24px 32px', display: 'flex', flexDirection: 'column' }}>{children}</main>
+
+        {/* Right feature panel — query page only */}
+        {page === 'query' && (
+          <aside style={{ width: 210, flexShrink: 0, borderLeft: `1px solid ${T.border}`, background: T.bgSider, overflowY: 'auto', padding: '24px 16px' }}>
+            <div style={{ color: T.textTertiary, fontSize: 10.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 16 }}>分析维度</div>
+            {[
+              { num: '01', color: T.primary, title: '客户身份穿透', desc: '还原询盘背后的真实企业，识别决策人层级与采购实力' },
+              { num: '02', color: T.primary, title: '询盘质量评分', desc: '量化评估线索价值，拦截垃圾询盘，锁定高净值买家' },
+              { num: '03', color: '#15803d', title: '供需匹配分析', desc: '比对客户需求与您的业务优势，判断是否"门当户对"' },
+              { num: '04', color: '#1d4ed8', title: '破冰策略建议', desc: '针对不同评分等级，给出定制化的首次沟通切入点' },
+              { num: '05', color: '#1d4ed8', title: '回复邮件草稿', desc: '生成符合老外采购逻辑的高转化初次回复，缩短响应时间' },
+            ].map(({ num, color, title, desc }, idx, arr) => (
+              <div key={num}>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 6 }}>
+                  <div style={{ width: 24, height: 24, borderRadius: 7, background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 10, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>{num}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ color: T.textPrimary, fontSize: 12.5, fontWeight: 600, marginBottom: 3 }}>{title}</div>
+                    <div style={{ color: T.textTertiary, fontSize: 11.5, lineHeight: 1.55 }}>{desc}</div>
+                  </div>
+                </div>
+                {idx < arr.length - 1 && (
+                  <div style={{ marginLeft: 12, width: 1, height: 14, background: T.borderSecond, marginBottom: 6 }} />
+                )}
+              </div>
+            ))}
+          </aside>
+        )}
+      </div>
     </div>
   )
 }
