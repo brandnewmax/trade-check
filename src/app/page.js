@@ -150,8 +150,71 @@ function MarkdownRenderer({ content }) {
       )
       continue
 
+    // Table — detect | col | col | pattern
+    } else if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
+      // Collect all table lines
+      const tableLines = []
+      while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
+        tableLines.push(lines[i])
+        i++
+      }
+      // Parse: first row = header, second row = separator, rest = body
+      const parseRow = (r) => r.trim().slice(1, -1).split('|').map(c => c.trim())
+      const header = parseRow(tableLines[0])
+      const body = tableLines.slice(2).map(parseRow) // skip separator row
+      elements.push(
+        <div key={`table-${i}`} style={{ margin: '12px 0 16px', overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, fontFamily: T.fontBody }}>
+            <thead>
+              <tr style={{ background: T.bgContainer }}>
+                {header.map((h, ci) => (
+                  <th key={ci} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: T.textPrimary, borderBottom: `2px solid ${T.border}`, whiteSpace: 'nowrap' }}>
+                    {renderInline(h)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {body.map((row, ri) => (
+                <tr key={ri} style={{ borderBottom: `1px solid ${T.borderSecond}`, background: ri % 2 === 1 ? T.bgContainer : 'transparent' }}>
+                  {row.map((cell, ci) => (
+                    <td key={ci} style={{ padding: '8px 12px', color: T.textSecondary, lineHeight: 1.6, verticalAlign: 'top' }}>
+                      {renderInline(cell)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )
+      continue
+
+    // Email block — lines starting with "Dear" or containing @, treat as email letter
     // Blockquote
     } else if (line.startsWith('> ')) {
+      // Check if this is part of an email (contains greeting patterns)
+      const emailGreeting = /^>\s*(Dear|Hi|Hello|To\s+Whom|Subject:)/i.test(line)
+      if (emailGreeting) {
+        // Collect full email blockquote
+        const emailLines = []
+        while (i < lines.length && lines[i].startsWith('> ')) {
+          emailLines.push(lines[i].slice(2))
+          i++
+        }
+        elements.push(
+          <div key={`email-${i}`} style={{ margin: '12px 0 16px', background: '#fafaf8', border: `1px solid ${T.border}`, borderRadius: T.radiusMd, overflow: 'hidden' }}>
+            <div style={{ padding: '6px 16px', background: T.bgContainer, borderBottom: `1px solid ${T.borderSecond}`, fontSize: 11, color: T.textTertiary, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+              参考回复邮件
+            </div>
+            <div style={{ padding: '16px 20px', fontFamily: "'Georgia', serif", fontSize: 14, lineHeight: 2, color: T.textPrimary, whiteSpace: 'pre-wrap' }}>
+              {emailLines.join('
+')}
+            </div>
+          </div>
+        )
+        continue
+      }
       elements.push(
         <blockquote key={i} style={{ margin: '8px 0', padding: '8px 14px', background: T.bgContainer, borderLeft: `2px solid ${T.border}`, borderRadius: '0 6px 6px 0', color: T.textSecondary, fontSize: 14.5, fontStyle: 'italic', lineHeight: 1.7 }}>
           {renderInline(line.slice(2))}
@@ -346,6 +409,7 @@ function QueryPage({ user }) {
   const [result, setResult] = useState('')
   const [loading, setLoading] = useState(false)
   const [streaming, setStreaming] = useState(false)
+  const [inputCollapsed, setInputCollapsed] = useState(false)
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
   const resultRef = useRef(null)
@@ -384,6 +448,7 @@ function QueryPage({ user }) {
       abortCtrlRef.current.abort()
       abortCtrlRef.current = null
     }
+    setInputCollapsed(false)
   }
 
   const analyze = async () => {
@@ -393,7 +458,7 @@ function QueryPage({ user }) {
     if (!inquiry.trim() && images.length === 0) errs.inquiry = '请填写询盘信息或上传名片图片'
     if (Object.keys(errs).length > 0) { setFieldErrors(errs); return }
     setFieldErrors({})
-    setLoading(true); setError(''); setResult(''); setStreaming(true)
+    setLoading(true); setError(''); setResult(''); setStreaming(true); setInputCollapsed(true)
 
     const abortCtrl = new AbortController()
     abortCtrlRef.current = abortCtrl
@@ -456,6 +521,7 @@ function QueryPage({ user }) {
       abortCtrlRef.current = null
       setLoading(false)
       setStreaming(false)
+      // Keep collapsed after done so result is visible; user can re-expand by clicking
     }
   }
 
@@ -463,8 +529,21 @@ function QueryPage({ user }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, height: '100%', overflow: 'hidden' }}>
-      {/* Input card */}
-      <div style={{ background: T.bgElevated, border: `1px solid ${T.border}`, borderRadius: T.radiusLg, padding: '24px 28px', boxShadow: T.shadowCard }}>
+      {/* Input card — collapsible */}
+      <div style={{ background: T.bgElevated, border: `1px solid ${T.border}`, borderRadius: T.radiusLg, boxShadow: T.shadowCard, overflow: 'hidden', flexShrink: 0 }}>
+        {/* Collapsed summary bar */}
+        {inputCollapsed && (
+          <div onClick={() => setInputCollapsed(false)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 20px', cursor: 'pointer', borderBottom: result ? `1px solid ${T.borderSecond}` : 'none' }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ color: T.textTertiary, flexShrink: 0 }}><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+            <span style={{ color: T.textTertiary, fontSize: 12.5, flex: 1 }}>
+              {url ? <span style={{ color: T.textSecondary, fontFamily: T.fontMono, fontSize: 12 }}>{url.slice(0, 40)}{url.length > 40 ? '...' : ''}</span> : '（点击展开修改输入）'}
+              {images.length > 0 && <span style={{ marginLeft: 8, color: T.primary, fontSize: 11.5 }}>+{images.length}张图</span>}
+            </span>
+            <span style={{ color: T.textTertiary, fontSize: 11.5 }}>点击展开</span>
+          </div>
+        )}
+        {/* Full form — hidden when collapsed */}
+        {!inputCollapsed && <div style={{ padding: '24px 28px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 16, alignItems: 'stretch' }}>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             <div style={{ color: T.textSecondary, fontSize: 13, fontWeight: 500, marginBottom: 6 }}>您的公司网址（或公司详细信息）</div>
@@ -552,6 +631,8 @@ function QueryPage({ user }) {
           </div>
         </div>
 
+        </div>}
+        {!inputCollapsed && <div style={{ padding: '0 28px 20px' }}>
         {error && (
           <div style={{ background: T.errorBg, border: `1px solid rgba(255,77,79,0.25)`, borderRadius: T.radiusMd, padding: '9px 14px', marginBottom: 14 }}>
             <span style={{ color: '#ff7875', fontSize: 13, fontWeight: 500 }}>⚠ </span>
@@ -573,6 +654,7 @@ function QueryPage({ user }) {
             </button>
           )}
         </div>
+        </div>}
       </div>
 
       {/* Result card */}
