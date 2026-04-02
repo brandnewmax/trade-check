@@ -24,7 +24,7 @@ export async function POST(req) {
   const baseUrl = globalSettings.baseUrl?.trim()
   const systemPrompt = globalSettings.systemPrompt || ''
   const apiKey = userSettings.apiKey?.trim()
-  const modelName = userSettings.modelName?.trim() || 'gpt-4o'
+  const modelName = userSettings.modelName?.trim() || 'gemini-3.1-pro-preview-vertex'
 
   if (!baseUrl) return Response.json({ error: '管理员尚未配置 Base URL' }, { status: 503 })
   if (!apiKey) return Response.json({ error: '请先在【设置】中填写您的 API Key' }, { status: 400 })

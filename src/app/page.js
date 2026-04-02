@@ -795,7 +795,7 @@ function HistoryPage({ user }) {
 
 // ─── SETTINGS PAGE ────────────────────────────────────────────────────────────
 function SettingsPage({ user }) {
-  const [form, setForm] = useState({ baseUrl: '', systemPrompt: '', apiKey: '', modelName: '' })
+  const [form, setForm] = useState({ baseUrl: '', systemPrompt: '', apiKey: '', modelName: 'gemini-3.1-pro-preview-vertex' })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -844,13 +844,17 @@ function SettingsPage({ user }) {
           </FormItem>
 
           <FormItem label="Model Name">
-            <select value={form.modelName || ''} onChange={e => setForm({ ...form, modelName: e.target.value })}              style={{ ...inputStyle, fontFamily: "'DM Mono',monospace", fontSize: 12.5, cursor: 'pointer', appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M6 9l6 6 6-6' stroke='%239c8a72' strokeWidth='2' strokeLinecap='round'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32 }}>
-              <option value="" disabled>选择模型...</option>
-              <option value="claude-sonnet-4-6">claude-sonnet-4-6</option>
-              <option value="gemini-3.1-pro-preview-vertex">gemini-3.1-pro-preview-vertex</option>
-              <option value="gemini-3-pro-preview-thinking">gemini-3-pro-preview-thinking</option>
-              <option value="gpt-5.4">gpt-5.4</option>
-            </select>
+            {(() => {
+              const MODELS = ['claude-sonnet-4-6','gemini-3.1-pro-preview-vertex','gemini-3-pro-preview-thinking','gpt-5.4']
+              const cur = form.modelName || ''
+              return (
+                <select value={cur} onChange={e => setForm({ ...form, modelName: e.target.value })}
+                  style={{ ...inputStyle, fontFamily: "'DM Mono',monospace", fontSize: 12.5, cursor: 'pointer', appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M6 9l6 6 6-6' stroke='%239c8a72' strokeWidth='2' strokeLinecap='round'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32 }}>
+                  {!MODELS.includes(cur) && cur && <option value={cur}>{cur}</option>}
+                  {MODELS.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              )
+            })()}
           </FormItem>
 
           <div style={{ background: T.primaryBg, border: `1px solid ${T.primaryBorder}`, borderRadius: T.radiusMd, padding: '9px 12px' }}>
