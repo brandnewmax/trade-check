@@ -899,7 +899,7 @@ function Layout({ user, onLogout, page, setPage, children }) {
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: T.bgLayout, fontFamily: T.fontUI }}>
       {/* Sider */}
-      <aside style={{ width: 220, flexShrink: 0, background: T.bgSider, borderRight: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', padding: '20px 12px', boxShadow: 'inset -1px 0 0 rgba(26,19,9,0.07)', height: '100vh', overflow: 'hidden' }}>
+      <aside style={{ width: 220, flexShrink: 0, background: T.bgSider, borderRight: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', padding: '20px 12px', boxShadow: 'inset -1px 0 0 rgba(26,19,9,0.07)', height: '100vh', overflowY: 'auto', overflowX: 'hidden' }}>
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 8px 16px', borderBottom: `1px solid ${T.borderSecond}`, marginBottom: 8 }}>
           <div style={{ width: 32, height: 32, borderRadius: T.radiusMd, background: T.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -950,6 +950,28 @@ function Layout({ user, onLogout, page, setPage, children }) {
             )
           })}
         </nav>
+
+        {/* Feature intro — shown on query page */}
+        {page === 'query' && (
+          <div style={{ margin: '12px 0', padding: '14px 10px', borderTop: `1px solid ${T.borderSecond}`, borderBottom: `1px solid ${T.borderSecond}` }}>
+            <div style={{ color: T.textTertiary, fontSize: 10.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>分析维度</div>
+            {[
+              { num: '01', color: '#b45309', title: '客户身份穿透', desc: '还原询盘背后的真实企业，识别决策人层级与采购实力' },
+              { num: '02', color: '#b45309', title: '询盘质量评分', desc: '量化评估线索价值，拦截垃圾询盘，锁定高净值买家' },
+              { num: '03', color: '#15803d', title: '供需匹配分析', desc: '比对客户需求与您的业务优势，判断是否"门当户对"' },
+              { num: '04', color: '#1d4ed8', title: '破冰策略建议', desc: '针对不同评分等级，给出定制化的首次沟通切入点' },
+              { num: '05', color: '#1d4ed8', title: '回复邮件草稿', desc: '生成符合老外采购逻辑的高转化初次回复，缩短响应时间' },
+            ].map(({ num, color, title, desc }) => (
+              <div key={num} style={{ display: 'flex', gap: 10, marginBottom: 12, alignItems: 'flex-start' }}>
+                <div style={{ width: 22, height: 22, borderRadius: 6, background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 9.5, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>{num}</div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ color: T.textPrimary, fontSize: 12, fontWeight: 600, marginBottom: 2 }}>{title}</div>
+                  <div style={{ color: T.textTertiary, fontSize: 11, lineHeight: 1.5 }}>{desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* User */}
         <div style={{ borderTop: `1px solid ${T.borderSecond}`, paddingTop: 12, marginTop: 4 }}>
