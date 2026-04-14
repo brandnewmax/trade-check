@@ -411,6 +411,20 @@ function QueryPage({ user }) {
   const [inputCollapsed, setInputCollapsed] = useState(false)
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
+  const [enableIntel, setEnableIntel] = useState(() => {
+    if (typeof window === 'undefined') return true
+    const v = window.localStorage.getItem('trade-check:enableIntel')
+    return v === null ? true : v === 'true'
+  })
+  const [intel, setIntel] = useState(null)
+  const [intelProgress, setIntelProgress] = useState({})
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('trade-check:enableIntel', String(enableIntel))
+    }
+  }, [enableIntel])
+
   const resultRef = useRef(null)
   const fileInputRef = useRef(null)
 
@@ -458,6 +472,8 @@ function QueryPage({ user }) {
     if (Object.keys(errs).length > 0) { setFieldErrors(errs); return }
     setFieldErrors({})
     setLoading(true); setError(''); setResult(''); setStreaming(true); setInputCollapsed(true)
+    setIntel(null)
+    setIntelProgress({})
 
     const abortCtrl = new AbortController()
     abortCtrlRef.current = abortCtrl
@@ -474,7 +490,12 @@ function QueryPage({ user }) {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, inquiry, images: images.map(img => ({ base64: img.base64, type: img.type })) }),
+        body: JSON.stringify({
+          url,
+          inquiry,
+          images: images.map(img => ({ base64: img.base64, type: img.type })),
+          enableIntel,
+        }),
         signal: abortCtrl.signal,
       })
       if (!res.ok) {
@@ -639,7 +660,16 @@ function QueryPage({ user }) {
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: T.textSecondary, marginRight: 12, cursor: 'pointer', userSelect: 'none' }}>
+            <input
+              type="checkbox"
+              checked={enableIntel}
+              onChange={(e) => setEnableIntel(e.target.checked)}
+              disabled={loading || streaming}
+            />
+            启用实时情报检索
+          </label>
           <button onClick={loading ? undefined : analyze} disabled={loading} style={{ flex: 1, padding: '10px', border: 'none', borderRadius: T.radiusMd, cursor: loading ? 'default' : 'pointer', background: loading ? 'rgba(180,83,9,0.35)' : T.primary, color: '#fff', fontSize: 15, fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, letterSpacing: '0.01em' }}>
             {loading
               ? <><Spinner color="#fff" />AI 分析中...</>
