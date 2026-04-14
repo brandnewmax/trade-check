@@ -882,183 +882,200 @@ function QueryPage({ user }) {
     }
   }
 
-  const score = extractScore(result)
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    analyze()
+  }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, height: '100%', overflow: 'hidden' }}>
-      {/* Input card — collapsible */}
-      <div style={{ background: T.bgElevated, border: `1px solid ${T.border}`, borderRadius: T.radiusLg, boxShadow: T.shadowCard, overflow: 'hidden', flexShrink: 0 }}>
-        {/* Collapsed summary bar */}
-        {inputCollapsed && (
-          <div onClick={() => setInputCollapsed(false)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 20px', cursor: 'pointer', borderBottom: result ? `1px solid ${T.borderSecond}` : 'none' }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ color: T.textTertiary, flexShrink: 0 }}><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-            <span style={{ color: T.textTertiary, fontSize: 12.5, flex: 1 }}>
-              {url ? <span style={{ color: T.textSecondary, fontFamily: T.fontMono, fontSize: 12 }}>{url.slice(0, 40)}{url.length > 40 ? '...' : ''}</span> : '（点击展开修改输入）'}
-              {images.length > 0 && <span style={{ marginLeft: 8, color: T.primary, fontSize: 11.5 }}>+{images.length}张图</span>}
-            </span>
-            <span style={{ color: T.textTertiary, fontSize: 11.5 }}>点击展开</span>
-          </div>
-        )}
-        {/* Full form — hidden when collapsed */}
-        {!inputCollapsed && <div style={{ padding: '24px 28px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 16, alignItems: 'stretch' }}>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <div style={{ color: T.textSecondary, fontSize: 13, fontWeight: 500, marginBottom: 6 }}>您的公司网址（或公司详细信息）</div>
-            <textarea value={url} onChange={e => { setUrl(e.target.value); if (e.target.value.trim()) setFieldErrors(p => ({...p, url: null})) }}
-              placeholder={'https://example.com\n\n或提供企业的详细信息，包括但不限于企业定位，企业优势，核心目标客户等'}
-              style={{ ...inputStyle, resize: 'none', flex: 1, fontFamily: "'DM Mono',monospace", fontSize: 13, borderColor: fieldErrors.url ? T.error : undefined }} />
-            {fieldErrors.url && <div style={{ color: T.error, fontSize: 12, marginTop: 4 }}>⚠ {fieldErrors.url}</div>}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <div style={{ color: T.textSecondary, fontSize: 13, fontWeight: 500, marginBottom: 6 }}>收到的询盘详细信息（或客户名片）</div>
-            {/* Unified drop zone wrapping textarea + image strip */}
-            <div
-              onDrop={handleDrop}
-              onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-              onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false) }}
-              onPaste={e => {
-                const items = Array.from(e.clipboardData?.items || [])
-                const imageItems = items.filter(item => item.type.startsWith('image/'))
-                if (imageItems.length > 0) {
-                  e.preventDefault()
-                  processFiles(imageItems.map(item => item.getAsFile()).filter(Boolean))
-                }
-              }}
-              style={{
-                border: `1.5px solid ${dragOver ? T.primary : T.border}`,
-                borderRadius: T.radiusMd,
-                background: dragOver ? T.primaryBg : T.bgInput,
-                transition: 'border-color 0.15s, background 0.15s',
-                overflow: 'hidden',
-              }}
-            >
-              <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
-                onChange={e => { processFiles(e.target.files); e.target.value = '' }} />
-
-              {/* Textarea — no own border, lives inside the drop zone */}
-              <textarea value={inquiry} onChange={e => { setInquiry(e.target.value); if (e.target.value.trim()) setFieldErrors(p => ({...p, inquiry: null})) }}
-                placeholder="粘贴询盘邮件内容、买家联系方式等...（可直接粘贴截图）"
-                onPaste={e => {
-                  const items = Array.from(e.clipboardData?.items || [])
-                  const imageItems = items.filter(item => item.type.startsWith('image/'))
-                  if (imageItems.length > 0) {
-                    e.preventDefault()
-                    processFiles(imageItems.map(item => item.getAsFile()).filter(Boolean))
-                  }
-                }}
-                style={{ ...inputStyle, border: 'none', borderRadius: 0, background: 'transparent',
-                  resize: 'none', height: 110, fontSize: 13, boxShadow: 'none',
-                  borderBottom: images.length > 0 ? `1px solid ${T.borderSecond}` : 'none' }} />
-
-              {/* Image strip — shown when images uploaded */}
-              {images.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '10px 12px', alignItems: 'center' }}>
-                  {images.map((img, idx) => (
-                    <div key={idx} style={{ position: 'relative', flexShrink: 0 }}>
-                      <img src={img.preview} alt={img.name}
-                        style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: T.radiusSm, border: `1px solid ${T.border}`, display: 'block' }} />
-                      <button onClick={e => { e.stopPropagation(); removeImage(idx) }}
-                        style={{ position: 'absolute', top: -5, right: -5, width: 17, height: 17, borderRadius: '50%', background: T.error, border: 'none', color: '#fff', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                  {images.length < 4 && (
-                    <div onClick={() => fileInputRef.current?.click()}
-                      style={{ width: 60, height: 60, border: `1.5px dashed ${T.border}`, borderRadius: T.radiusSm, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.textTertiary, fontSize: 20, cursor: 'pointer' }}>+</div>
-                  )}
-                </div>
-              )}
-
-              {/* Bottom hint bar */}
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px 8px',
-                  color: dragOver ? T.primary : fieldErrors.inquiry ? T.error : T.textDisabled, fontSize: 12, cursor: 'pointer',
-                  borderTop: `1px solid ${fieldErrors.inquiry ? T.error : T.borderSecond}`, transition: 'color 0.15s' }}
+    <form onSubmit={handleSubmit} className="flex flex-col lg:flex-row gap-6 pb-8">
+      {/* LEFT column — input + intel panel */}
+      <div className="w-full lg:w-[420px] lg:shrink-0 space-y-4 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto lg:pr-2">
+        {!inputCollapsed ? (
+          <div className="bg-white border border-stripe-border rounded-stripe shadow-stripe-ambient overflow-hidden">
+            <div className="px-5 py-4 border-b border-stripe-border flex items-center justify-between">
+              <h3 className="text-subheading font-light text-stripe-navy">背调输入</h3>
+              <button
+                type="button"
+                onClick={() => setInputCollapsed(true)}
+                className="text-caption text-stripe-body hover:text-stripe-purple"
               >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                  <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="1.8"/>
-                  <circle cx="8.5" cy="8.5" r="1.5" stroke="currentColor" strokeWidth="1.8"/>
-                  <path d="M21 15l-5-5L5 21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                </svg>
-                <span>{dragOver ? '松开即可上传' : '拖拽到此区域或点击上传名片/图片（最多4张，JPG、PNG）'}</span>
-              </div>
+                收起
+              </button>
+            </div>
+            <div className="px-5 py-5 space-y-5">
+              <FormItem label="公司网址" hint="支持无 http:// 前缀" error={fieldErrors.url}>
+                <textarea
+                  value={url}
+                  onChange={(e) => {
+                    setUrl(e.target.value)
+                    if (e.target.value.trim()) setFieldErrors((p) => ({ ...p, url: null }))
+                  }}
+                  rows={2}
+                  className="w-full px-3 py-2 text-body font-light border border-stripe-border rounded-stripe-sm resize-none focus:outline-none focus:border-stripe-purple focus:ring-2 focus:ring-stripe-purple/20 transition"
+                />
+              </FormItem>
+              <FormItem label="询盘内容" hint="可贴原始邮件正文" error={fieldErrors.inquiry}>
+                <textarea
+                  value={inquiry}
+                  onChange={(e) => {
+                    setInquiry(e.target.value)
+                    if (e.target.value.trim()) setFieldErrors((p) => ({ ...p, inquiry: null }))
+                  }}
+                  rows={5}
+                  className="w-full px-3 py-2 text-body font-light border border-stripe-border rounded-stripe-sm resize-none focus:outline-none focus:border-stripe-purple focus:ring-2 focus:ring-stripe-purple/20 transition"
+                />
+              </FormItem>
+
+              <FormItem label="附加图片(可选)" hint="拖拽、粘贴或点击 · 最多 4 张">
+                {/* IMAGE_DROPZONE_PLACEHOLDER — R4.2 will replace this with <ImageDropzone/> */}
+                <div
+                  onDrop={handleDrop}
+                  onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                  onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false) }}
+                  onPaste={e => {
+                    const items = Array.from(e.clipboardData?.items || [])
+                    const imageItems = items.filter(item => item.type.startsWith('image/'))
+                    if (imageItems.length > 0) {
+                      e.preventDefault()
+                      processFiles(imageItems.map(item => item.getAsFile()).filter(Boolean))
+                    }
+                  }}
+                  style={{
+                    border: `1.5px solid ${dragOver ? '#635bff' : '#e0e0e0'}`,
+                    borderRadius: 6,
+                    background: dragOver ? '#f5f4ff' : '#fafafa',
+                    transition: 'border-color 0.15s, background 0.15s',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
+                    onChange={e => { processFiles(e.target.files); e.target.value = '' }} />
+
+                  {/* Image strip — shown when images uploaded */}
+                  {images.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '10px 12px', alignItems: 'center' }}>
+                      {images.map((img, idx) => (
+                        <div key={idx} style={{ position: 'relative', flexShrink: 0 }}>
+                          <img src={img.preview} alt={img.name}
+                            style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 4, border: '1px solid #e0e0e0', display: 'block' }} />
+                          <button type="button" onClick={e => { e.stopPropagation(); removeImage(idx) }}
+                            style={{ position: 'absolute', top: -5, right: -5, width: 17, height: 17, borderRadius: '50%', background: '#ff4d4f', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                      {images.length < 4 && (
+                        <div onClick={() => fileInputRef.current?.click()}
+                          style={{ width: 60, height: 60, border: '1.5px dashed #e0e0e0', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#aaa', fontSize: 20, cursor: 'pointer' }}>+</div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Bottom hint bar */}
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px 8px',
+                      color: dragOver ? '#635bff' : '#ccc', fontSize: 12, cursor: 'pointer',
+                      borderTop: images.length > 0 ? '1px solid #f0f0f0' : 'none', transition: 'color 0.15s' }}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                      <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="1.8"/>
+                      <circle cx="8.5" cy="8.5" r="1.5" stroke="currentColor" strokeWidth="1.8"/>
+                      <path d="M21 15l-5-5L5 21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                    </svg>
+                    <span>{dragOver ? '松开即可上传' : '拖拽到此区域或点击上传名片/图片（最多4张，JPG、PNG）'}</span>
+                  </div>
+                </div>
+              </FormItem>
+
+              <label className="flex items-center gap-2 text-caption text-stripe-label cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={enableIntel}
+                  onChange={(e) => setEnableIntel(e.target.checked)}
+                  className="accent-stripe-purple w-4 h-4"
+                />
+                启用实时情报检索
+              </label>
+              {error && <div className="text-caption text-stripe-ruby">{error}</div>}
+            </div>
+            <div className="px-5 py-4 bg-stripe-border/30 border-t border-stripe-border">
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full h-11 bg-stripe-purple hover:bg-stripe-purpleHover text-white text-btn rounded-stripe-sm disabled:opacity-50 transition-colors flex items-center justify-center"
+              >
+                {loading ? <Spinner size={16} color="#ffffff" /> : '开始分析'}
+              </button>
             </div>
           </div>
-        </div>
-
-        </div>}
-        {!inputCollapsed && <div style={{ padding: '0 28px 20px' }}>
-        {error && (
-          <div style={{ background: T.errorBg, border: `1px solid rgba(255,77,79,0.25)`, borderRadius: T.radiusMd, padding: '9px 14px', marginBottom: 14 }}>
-            <span style={{ color: '#ff7875', fontSize: 13, fontWeight: 500 }}>⚠ </span>
-            <span style={{ color: '#ffb8b8', fontSize: 13 }}>{error}</span>
-          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setInputCollapsed(false)}
+            className="w-full h-14 px-5 bg-white border border-stripe-border rounded-stripe hover:border-stripe-purpleLight flex items-center gap-3 transition-colors text-left"
+          >
+            <SearchIcon className="text-stripe-body shrink-0" />
+            <span className="flex-1 truncate font-mono text-caption-sm text-stripe-label">
+              {url || '(未填写)'}
+            </span>
+            {images.length > 0 && (
+              <span className="text-caption-sm text-stripe-purple">+{images.length}图</span>
+            )}
+            <span className="text-caption text-stripe-body">展开</span>
+          </button>
         )}
 
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: T.textSecondary, marginRight: 12, cursor: 'pointer', userSelect: 'none' }}>
-            <input
-              type="checkbox"
-              checked={enableIntel}
-              onChange={(e) => setEnableIntel(e.target.checked)}
-              disabled={loading || streaming}
-            />
-            启用实时情报检索
-          </label>
-          <button onClick={loading ? undefined : analyze} disabled={loading} style={{ flex: 1, padding: '10px', border: 'none', borderRadius: T.radiusMd, cursor: loading ? 'default' : 'pointer', background: loading ? 'rgba(180,83,9,0.35)' : T.primary, color: '#fff', fontSize: 15, fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, letterSpacing: '0.01em' }}>
-            {loading
-              ? <><Spinner color="#fff" />AI 分析中...</>
-              : <><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M13 10V3L4 14h7v7l9-11h-7z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>开始背调分析</>
-            }
-          </button>
-          {loading && (
-            <button onClick={stopAnalyze} style={{ padding: '10px 20px', border: `1px solid ${T.border}`, borderRadius: T.radiusMd, cursor: 'pointer', background: T.bgElevated, color: T.textSecondary, fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, transition: 'all 0.15s' }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor"/></svg>
-              停止
-            </button>
-          )}
-        </div>
-        </div>}
+        {(intel || Object.keys(intelProgress).length > 0) && (
+          <IntelPanel intel={intel || intelProgress} />
+        )}
       </div>
 
-      {intelWarning && (
-        <div style={{ padding: '8px 12px', marginBottom: 12, fontSize: 12, color: '#9a6700', background: '#fff8c5', border: '1px solid #d4a72c', borderRadius: 6 }}>
-          ⚠️ 实时情报收集失败(已降级到基础分析):{intelWarning}
-        </div>
-      )}
-
-      {(intel || Object.keys(intelProgress).length > 0) && (
-        <IntelPanel intel={intel || intelProgress} />
-      )}
-
-      {/* Result card */}
-      {(result || streaming) && (
-        <div style={{ background: T.bgElevated, border: `1px solid ${T.border}`, borderRadius: T.radiusLg, overflow: 'hidden', boxShadow: T.shadowCard, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-          {/* Result header */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 24px', borderBottom: `1px solid ${T.border}`, background: T.bgContainer }}>
-            <span style={{ color: T.textSecondary, fontSize: 13, fontWeight: 500 }}>分析结果</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              {streaming && <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: T.primary, fontSize: 12 }}><Spinner color={T.primary} size={13} />生成中</div>}
-              {result && !streaming && <ScoreBadge score={score} size="md" />}
-            </div>
-          </div>
-          {/* Result body */}
-          <div ref={resultRef} style={{ padding: '20px 28px', flex: 1, overflowY: 'auto' }}>
-            <MarkdownRenderer content={result} />
+      {/* RIGHT column — result */}
+      <div className="flex-1 min-w-0 bg-white border border-stripe-border rounded-stripe shadow-stripe-card flex flex-col lg:max-h-[calc(100vh-8rem)]">
+        <div className="px-6 py-4 border-b border-stripe-border flex items-center justify-between">
+          <h3 className="text-subheading font-light text-stripe-navy">风险分析报告</h3>
+          <div className="flex items-center gap-3">
+            {streaming && <Spinner size={14} />}
+            {extractScore(result) && <ScoreBadge score={extractScore(result)} size="sm" />}
           </div>
         </div>
-      )}
 
-      {/* Empty state */}
-      {!result && !streaming && !loading && (
-        <div style={{ background: T.bgElevated, border: `1px dashed ${T.border}`, borderRadius: T.radiusLg, padding: '40px 24px', textAlign: 'center' }}>
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" style={{ color: T.textDisabled, margin: '0 auto 10px', display: 'block' }}><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-          <div style={{ color: T.textTertiary, fontSize: 13 }}>填写上方信息后点击开始分析</div>
+        {intelWarning && (
+          <div className="mx-6 mt-4 px-4 py-3 bg-[#fff8c5] border border-[#d4a72c]/50 rounded-stripe-sm text-caption text-stripe-lemon">
+            ⚠️ 实时情报收集失败(已降级到基础分析):{intelWarning}
+          </div>
+        )}
+
+        <div ref={resultRef} className="flex-1 overflow-y-auto px-6 py-6">
+          {!result && !streaming ? (
+            <EmptyState
+              icon={<SearchIcon size={20} />}
+              title="等待分析"
+              description="填写左侧表单后点击「开始分析」"
+            />
+          ) : (
+            <article className="max-w-none">
+              <MarkdownRenderer content={result} />
+            </article>
+          )}
         </div>
-      )}
-    </div>
+
+        {result && !streaming && (
+          <div className="px-6 py-3 border-t border-stripe-border bg-stripe-border/20 flex items-center justify-between text-caption text-stripe-body">
+            <span>分析完成 · 可在左侧情报面板交叉验证来源</span>
+            <button
+              type="button"
+              onClick={() => navigator.clipboard.writeText(result)}
+              className="text-stripe-purple hover:text-stripe-purpleHover font-normal"
+            >
+              复制报告
+            </button>
+          </div>
+        )}
+      </div>
+    </form>
   )
 }
 
