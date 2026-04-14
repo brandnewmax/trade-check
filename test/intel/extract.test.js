@@ -137,4 +137,61 @@ describe('deriveCompanyUrlFromText', () => {
     )
     expect(out).toBe('https://mycorp.com')
   })
+
+  // ── Bare-domain fallback ──────────────────────────────────────────────
+
+  it('extracts a bare domain (no protocol, no www)', () => {
+    expect(deriveCompanyUrlFromText('Please visit abctrading.com for details.'))
+      .toBe('https://abctrading.com')
+  })
+
+  it('extracts a bare domain at the start of a sentence', () => {
+    expect(deriveCompanyUrlFromText('abctrading.com is our official site'))
+      .toBe('https://abctrading.com')
+  })
+
+  it('extracts a bare domain followed by a period at end of sentence', () => {
+    expect(deriveCompanyUrlFromText('Our site: mycorp.com. Let us know.'))
+      .toBe('https://mycorp.com')
+  })
+
+  it('extracts a bare domain in Chinese-context prose', () => {
+    expect(deriveCompanyUrlFromText('我们的官网是 abctrading.com,欢迎访问'))
+      .toBe('https://abctrading.com')
+  })
+
+  it('extracts a bare domain wrapped in parentheses', () => {
+    expect(deriveCompanyUrlFromText('Check our site (abctrading.com)!'))
+      .toBe('https://abctrading.com')
+  })
+
+  it('matches a full subdomain as a bare domain', () => {
+    expect(deriveCompanyUrlFromText('platform: shop.bigbrand.com'))
+      .toBe('https://shop.bigbrand.com')
+  })
+
+  it('bare pass does NOT match inside an email address', () => {
+    expect(deriveCompanyUrlFromText('reach out at info@example.com'))
+      .toBeNull()
+  })
+
+  it('bare pass does NOT match blacklisted domains', () => {
+    expect(deriveCompanyUrlFromText('find us on facebook.com/mycompany'))
+      .toBeNull()
+    expect(deriveCompanyUrlFromText('listing on alibaba.com'))
+      .toBeNull()
+  })
+
+  it('bare pass still honors excludeDomain', () => {
+    expect(deriveCompanyUrlFromText(
+      'we love konmison.com — we are at thegoodbuyer.com',
+      'konmison.com'
+    )).toBe('https://thegoodbuyer.com')
+  })
+
+  it('strong pass still wins over bare when both present', () => {
+    expect(deriveCompanyUrlFromText(
+      'main: https://mycorp.com alt: other.com'
+    )).toBe('https://mycorp.com')
+  })
 })
