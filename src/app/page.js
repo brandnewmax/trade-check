@@ -1362,116 +1362,116 @@ function SettingsPage({ user }) {
 }
 
 // ─── LAYOUT ───────────────────────────────────────────────────────────────────
-function Layout({ user, onLogout, page, setPage, children }) {
-  const nav = [
-    { id: 'query', label: '背调查询', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M13 10V3L4 14h7v7l9-11h-7z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg> },
-    { id: 'history', label: '查询历史', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg> },
-    { id: 'settings', label: '设置', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065zM15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg> },
-  ]
+function Layout({ user, onLogout, page, setPage, serpUsage, children }) {
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const pageTitles = { query: '分析', history: '历史', settings: '设置' }
+  const isAdmin = user?.role === 'admin'
+
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: T.bgLayout, fontFamily: T.fontUI }}>
-      {/* Sider */}
-      <aside style={{ width: 220, flexShrink: 0, background: T.bgSider, borderRight: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', padding: '20px 12px', boxShadow: 'inset -1px 0 0 rgba(26,19,9,0.07)', height: '100vh', overflowY: 'auto', overflowX: 'hidden' }}>
-        {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 8px 16px', borderBottom: `1px solid ${T.borderSecond}`, marginBottom: 8 }}>
-          <div style={{ width: 32, height: 32, borderRadius: T.radiusMd, background: T.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          </div>
-          <div>
-            <div style={{ color: T.textPrimary, fontSize: 13, fontWeight: 600, lineHeight: 1.3 }}>外贸背调</div>
-            <div style={{ color: T.textDisabled, fontSize: 10.5 }}>mmldigi.com</div>
-          </div>
+    <div className="h-screen flex bg-white text-stripe-navy">
+      {/* Mobile header (lg: hidden) */}
+      <div className="lg:hidden fixed top-0 inset-x-0 h-14 bg-white border-b border-stripe-border flex items-center px-4 z-30">
+        <button
+          type="button"
+          onClick={() => setMobileOpen(true)}
+          className="w-9 h-9 flex items-center justify-center rounded-stripe-sm hover:bg-stripe-purpleLight/20 text-stripe-navy"
+          aria-label="打开菜单"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </button>
+        <div className="ml-3">
+          <Logo />
+        </div>
+      </div>
+
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/40 z-30"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        className={`w-60 shrink-0 border-r border-stripe-border bg-white flex flex-col lg:static fixed inset-y-0 left-0 z-40 transition-transform ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        }`}
+      >
+        <div className="h-20 px-6 flex items-center">
+          <Logo />
         </div>
 
-        {/* Page title — shown below logo */}
-        {page === 'query' && (
-          <div style={{ padding: '12px 8px 16px', borderBottom: `1px solid ${T.borderSecond}`, marginBottom: 8 }}>
-            <div style={{ color: T.textPrimary, fontSize: 14, fontWeight: 600, marginBottom: 3 }}>外贸背景调查</div>
-            <div style={{ color: T.textTertiary, fontSize: 11.5, lineHeight: 1.5 }}>输入目标公司信息与询盘内容，AI 将进行专业背调分析</div>
-          </div>
-        )}
-        {page === 'history' && (
-          <div style={{ padding: '12px 8px 16px', borderBottom: `1px solid ${T.borderSecond}`, marginBottom: 8 }}>
-            <div style={{ color: T.textPrimary, fontSize: 14, fontWeight: 600 }}>查询历史</div>
-          </div>
-        )}
-        {page === 'settings' && (
-          <div style={{ padding: '12px 8px 16px', borderBottom: `1px solid ${T.borderSecond}`, marginBottom: 8 }}>
-            <div style={{ color: T.textPrimary, fontSize: 14, fontWeight: 600 }}>设置</div>
-          </div>
-        )}
-
-        {/* Nav */}
-        <nav style={{ flex: 1, paddingTop: 4 }}>
-          {nav.map(item => {
-            const active = page === item.id
-            return (
-              <button key={item.id} onClick={() => setPage(item.id)} style={{
-                width: '100%', display: 'flex', alignItems: 'center', gap: 9,
-                padding: '8px 12px', borderRadius: T.radiusMd, marginBottom: 2,
-                background: active ? T.primaryBg : 'transparent',
-                border: `1px solid ${active ? T.primaryBorder : 'transparent'}`,
-                color: active ? T.primary : T.textSecondary,
-                fontSize: 13.5, fontWeight: active ? 500 : 400,
-                cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
-              }}>
-                {item.icon}
-                {item.label}
-                {active && <div style={{ marginLeft: 'auto', width: 5, height: 5, borderRadius: '50%', background: T.primary }} />}
-              </button>
-            )
-          })}
+        <nav className="flex-1 px-3 py-2 space-y-1">
+          <NavItem
+            icon={<SearchIcon />}
+            label="分析"
+            active={page === 'query'}
+            onClick={() => {
+              setPage('query')
+              setMobileOpen(false)
+            }}
+          />
+          <NavItem
+            icon={<ClockIcon />}
+            label="历史"
+            active={page === 'history'}
+            onClick={() => {
+              setPage('history')
+              setMobileOpen(false)
+            }}
+          />
+          <NavItem
+            icon={<GearIcon />}
+            label="设置"
+            active={page === 'settings'}
+            onClick={() => {
+              setPage('settings')
+              setMobileOpen(false)
+            }}
+          />
         </nav>
 
-        {/* User */}
-        <div style={{ borderTop: `1px solid ${T.borderSecond}`, paddingTop: 12, marginTop: 4 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '6px 8px', marginBottom: 8, borderRadius: T.radiusMd, background: T.bgContainer }}>
-            <div style={{ width: 28, height: 28, borderRadius: '50%', background: T.primaryBg, border: `1px solid ${T.primaryBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.primary, fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
-              {user.name?.[0]?.toUpperCase() || 'U'}
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ color: T.textPrimary, fontSize: 12.5, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.name}</div>
-              <div style={{ fontSize: 10.5, color: user.role === 'admin' ? T.warning : T.textTertiary }}>{user.role === 'admin' ? '管理员' : '用户'}</div>
-            </div>
+        {isAdmin && serpUsage && (
+          <div className="mx-3 mb-3 p-3 bg-stripe-purpleLight/15 border border-stripe-purpleLight/30 rounded-stripe text-caption-sm">
+            <div className="text-stripe-label mb-1">SerpAPI 本月用量</div>
+            <div className="font-mono text-stripe-purple text-body">{serpUsage.count} 次</div>
+            <div className="text-stripe-body mt-0.5">{serpUsage.month}</div>
           </div>
-          <button onClick={onLogout} style={{ width: '100%', padding: '7px 12px', background: 'transparent', border: `1px solid ${T.border}`, borderRadius: T.radiusMd, color: T.textTertiary, fontSize: 12.5, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7, transition: 'all 0.15s' }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            退出登录
+        )}
+
+        <div className="border-t border-stripe-border p-3 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-stripe-purpleLight/30 text-stripe-purple flex items-center justify-center font-normal text-caption">
+            {user?.email?.[0]?.toUpperCase() || '?'}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-caption text-stripe-navy truncate">{user?.name || user?.email}</div>
+            <div className="text-caption-sm text-stripe-body truncate">{user?.email}</div>
+          </div>
+          <button
+            type="button"
+            onClick={onLogout}
+            className="w-8 h-8 flex items-center justify-center rounded-stripe-sm text-stripe-body hover:bg-stripe-purpleLight/20 hover:text-stripe-purple"
+            title="登出"
+            aria-label="登出"
+          >
+            <LogoutIcon />
           </button>
         </div>
       </aside>
 
-      {/* Main + optional right panel */}
-      <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
-        <main style={{ flex: 1, overflow: 'hidden', padding: '24px 32px', display: 'flex', flexDirection: 'column' }}>{children}</main>
-
-        {/* Right feature panel — query page only */}
-        {page === 'query' && (
-          <aside style={{ width: 210, flexShrink: 0, borderLeft: `1px solid ${T.border}`, background: T.bgSider, overflowY: 'auto', padding: '24px 16px' }}>
-            <div style={{ color: T.textTertiary, fontSize: 10.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 16 }}>分析维度</div>
-            {[
-              { num: '01', color: T.primary, title: '客户身份穿透', desc: '还原询盘背后的真实企业，识别决策人层级与采购实力' },
-              { num: '02', color: T.primary, title: '询盘质量评分', desc: '量化评估线索价值，拦截垃圾询盘，锁定高净值买家' },
-              { num: '03', color: '#15803d', title: '供需匹配分析', desc: '比对客户需求与您的业务优势，判断是否"门当户对"' },
-              { num: '04', color: '#1d4ed8', title: '破冰策略建议', desc: '针对不同评分等级，给出定制化的首次沟通切入点' },
-              { num: '05', color: '#1d4ed8', title: '回复邮件草稿', desc: '生成符合老外采购逻辑的高转化初次回复，缩短响应时间' },
-            ].map(({ num, color, title, desc }, idx, arr) => (
-              <div key={num}>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 6 }}>
-                  <div style={{ width: 24, height: 24, borderRadius: 7, background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 10, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>{num}</div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ color: T.textPrimary, fontSize: 12.5, fontWeight: 600, marginBottom: 3 }}>{title}</div>
-                    <div style={{ color: T.textTertiary, fontSize: 11.5, lineHeight: 1.55 }}>{desc}</div>
-                  </div>
-                </div>
-                {idx < arr.length - 1 && (
-                  <div style={{ marginLeft: 12, width: 1, height: 14, background: T.borderSecond, marginBottom: 6 }} />
-                )}
-              </div>
-            ))}
-          </aside>
-        )}
-      </div>
+      {/* Main */}
+      <main className="flex-1 min-w-0 flex flex-col h-screen overflow-hidden lg:pt-0 pt-14">
+        <div className="sticky top-0 bg-white border-b border-stripe-border z-10 h-16 px-4 sm:px-6 lg:px-8 flex items-center justify-between">
+          <h2 className="text-subheading font-light text-stripe-navy">{pageTitles[page] || ''}</h2>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6">
+          {children}
+        </div>
+      </main>
     </div>
   )
 }
@@ -1497,5 +1497,5 @@ export default function App() {
     : page === 'settings' ? <SettingsPage user={user} />
     : <QueryPage user={user} />
 
-  return <Layout user={user} onLogout={logout} page={page} setPage={setPage}>{content}</Layout>
+  return <Layout user={user} onLogout={logout} page={page} setPage={setPage} serpUsage={null}>{content}</Layout>
 }
