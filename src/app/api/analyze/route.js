@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { requireSession } from '@/lib/auth'
 import { getGlobalSettings, getUserSettings, saveQuery } from '@/lib/kv'
+import { gatherIntel, formatIntelAsBriefing } from '@/lib/intel'
 
 export async function POST(req) {
   const { session, error, status } = await requireSession()
@@ -11,7 +12,7 @@ export async function POST(req) {
   try { body = await req.json() }
   catch { return Response.json({ error: '请求格式错误' }, { status: 400 }) }
 
-  const { url, inquiry, images = [] } = body
+  const { url, inquiry, images = [], enableIntel = true } = body
   if (!url?.trim() && !inquiry?.trim() && images.length === 0) {
     return Response.json({ error: '请填写信息或上传图片' }, { status: 400 })
   }
@@ -22,77 +23,110 @@ export async function POST(req) {
   ])
 
   const baseUrl = globalSettings.baseUrl?.trim()
-  const systemPrompt = globalSettings.systemPrompt || ''
   const apiKey = userSettings.apiKey?.trim()
   const modelName = userSettings.modelName?.trim() || 'gemini-3.1-pro-preview-vertex'
 
   if (!baseUrl) return Response.json({ error: '管理员尚未配置 Base URL' }, { status: 503 })
   if (!apiKey) return Response.json({ error: '请先在【设置】中填写您的 API Key' }, { status: 400 })
-
-  const endpoint = baseUrl.replace(/\/$/, '') + '/chat/completions'
-
-  // Build user message — text + optional images
-  const textPart = `**公司网址：** ${url || '未提供'}\n\n**询盘详细信息：**\n${inquiry || '未提供'}`
-
-  let userContent
-  if (images.length > 0) {
-    // Multimodal: mix text and image_url parts
-    userContent = [
-      { type: 'text', text: textPart },
-      ...images.map(img => ({
-        type: 'image_url',
-        image_url: {
-          url: `data:${img.type || 'image/jpeg'};base64,${img.base64}`,
-          detail: 'high',
-        },
-      })),
-    ]
-  } else {
-    userContent = textPart
-  }
-
-  let upstreamRes
-  try {
-    upstreamRes = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: modelName,
-        stream: true,
-        messages: [
-          ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
-          { role: 'user', content: userContent },
-        ],
-      }),
-    })
-  } catch (e) {
-    return Response.json({ error: `无法连接到 API：${e.message}` }, { status: 502 })
-  }
-
-  if (!upstreamRes.ok) {
-    let detail = ''
-    try { detail = await upstreamRes.text() } catch {}
-    try { detail = JSON.parse(detail)?.error?.message || detail } catch {}
-    return Response.json({ error: `API 错误 ${upstreamRes.status}：${detail.slice(0, 300)}` }, { status: 502 })
+  if (enableIntel && !globalSettings.serpApiKey?.trim()) {
+    return Response.json({ error: '管理员尚未配置 SerpAPI Key,请关闭"实时情报检索"后重试' }, { status: 503 })
   }
 
   const encoder = new TextEncoder()
   const decoder = new TextDecoder()
   const HEARTBEAT_INTERVAL = 8000
-  let heartbeatTimer = null
 
   const stream = new ReadableStream({
     async start(controller) {
-      const enqueue = (data) => {
-        try { controller.enqueue(encoder.encode(data)) } catch {}
+      let heartbeatTimer = null
+      const enqueue = (obj) => {
+        try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`)) } catch {}
+      }
+      const enqueueRaw = (s) => {
+        try { controller.enqueue(encoder.encode(s)) } catch {}
+      }
+      heartbeatTimer = setInterval(() => enqueueRaw(': ping\n\n'), HEARTBEAT_INTERVAL)
+
+      // ── Stage 1-3: intel ─────────────────────────────────────────────────
+      let intel = null
+      if (enableIntel) {
+        try {
+          intel = await gatherIntel({
+            url,
+            inquiry,
+            apiKey,
+            globalSettings,
+            onProgress: (partial) => enqueue({ type: 'intel', partial }),
+          })
+          enqueue({ type: 'intelDone', intel })
+        } catch (e) {
+          enqueue({ type: 'intelError', error: e.message || String(e) })
+          intel = null
+        }
       }
 
-      heartbeatTimer = setInterval(() => {
-        enqueue(': ping\n\n')
-      }, HEARTBEAT_INTERVAL)
+      // ── Stage 4: main LLM ────────────────────────────────────────────────
+      const useBriefing = !!intel
+      const systemPrompt = useBriefing
+        ? globalSettings.systemPrompt
+        : globalSettings.fallbackSystemPrompt
+
+      const briefing = useBriefing ? formatIntelAsBriefing(intel) : ''
+      const textPart =
+        (briefing ? `${briefing}\n\n---\n\n` : '') +
+        `**公司网址：** ${url || '未提供'}\n\n**询盘详细信息：**\n${inquiry || '未提供'}`
+
+      let userContent
+      if (images.length > 0) {
+        userContent = [
+          { type: 'text', text: textPart },
+          ...images.map(img => ({
+            type: 'image_url',
+            image_url: {
+              url: `data:${img.type || 'image/jpeg'};base64,${img.base64}`,
+              detail: 'high',
+            },
+          })),
+        ]
+      } else {
+        userContent = textPart
+      }
+
+      const endpoint = baseUrl.replace(/\/$/, '') + '/chat/completions'
+
+      let upstreamRes
+      try {
+        upstreamRes = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: modelName,
+            stream: true,
+            messages: [
+              ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
+              { role: 'user', content: userContent },
+            ],
+          }),
+        })
+      } catch (e) {
+        enqueue({ type: 'error', error: `无法连接到 API：${e.message}` })
+        clearInterval(heartbeatTimer)
+        try { controller.close() } catch {}
+        return
+      }
+
+      if (!upstreamRes.ok) {
+        let detail = ''
+        try { detail = await upstreamRes.text() } catch {}
+        try { detail = JSON.parse(detail)?.error?.message || detail } catch {}
+        enqueue({ type: 'error', error: `API 错误 ${upstreamRes.status}：${String(detail).slice(0, 300)}` })
+        clearInterval(heartbeatTimer)
+        try { controller.close() } catch {}
+        return
+      }
 
       const reader = upstreamRes.body.getReader()
       let fullText = ''
@@ -114,20 +148,24 @@ export async function POST(req) {
               const delta = parsed.choices?.[0]?.delta?.content || ''
               if (delta) {
                 fullText += delta
-                enqueue(`data: ${JSON.stringify({ delta })}\n\n`)
+                enqueue({ type: 'delta', delta })
               }
             } catch {}
           }
         }
       } catch (e) {
-        enqueue(`data: ${JSON.stringify({ error: `流中断：${e.message}` })}\n\n`)
+        enqueue({ type: 'error', error: `流中断：${e.message}` })
       } finally {
         clearInterval(heartbeatTimer)
+
         if (fullText) {
           const riskLevel = fullText.includes('高风险') ? 'high'
             : fullText.includes('中风险') ? 'medium'
-            : fullText.includes('低风险') ? 'low' : 'unknown'
-          enqueue(`data: ${JSON.stringify({ done: true, result: fullText, riskLevel })}\n\n`)
+            : fullText.includes('低风险') ? 'low'
+            : 'unknown'
+
+          enqueue({ type: 'done', result: fullText, riskLevel, intel })
+
           saveQuery({
             userEmail: session.email,
             url: url?.trim() || '',
@@ -138,14 +176,16 @@ export async function POST(req) {
             riskLevel,
             createdAt: new Date().toISOString(),
             model: modelName,
+            intel,
+            intelEnabled: enableIntel,
           }).catch(() => {})
         } else {
-          enqueue(`data: ${JSON.stringify({ error: 'AI 返回空内容，请检查 Model Name 是否正确' })}\n\n`)
+          enqueue({ type: 'error', error: 'AI 返回空内容,请检查 Model Name 是否正确' })
         }
         try { controller.close() } catch {}
       }
     },
-    cancel() { clearInterval(heartbeatTimer) }
+    cancel() {}
   })
 
   return new Response(stream, {
@@ -153,7 +193,7 @@ export async function POST(req) {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
       'X-Accel-Buffering': 'no',
-      'Connection': 'keep-alive',
+      Connection: 'keep-alive',
     },
   })
 }
