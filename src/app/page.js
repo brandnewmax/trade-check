@@ -101,6 +101,111 @@ function EmptyState({ icon, title, description }) {
   )
 }
 
+function ImageDropzone({ images, setImages, maxImages = 4 }) {
+  const [dragOver, setDragOver] = useState(false)
+  const inputRef = useRef(null)
+
+  async function processFiles(files) {
+    const arr = Array.from(files).filter((f) => f.type.startsWith('image/'))
+    const remaining = maxImages - images.length
+    const toAdd = arr.slice(0, Math.max(0, remaining))
+    const results = await Promise.all(
+      toAdd.map(
+        (file) =>
+          new Promise((resolve) => {
+            const reader = new FileReader()
+            reader.onload = () => {
+              const dataUrl = reader.result
+              const base64 = typeof dataUrl === 'string' ? dataUrl.split(',')[1] || '' : ''
+              resolve({ name: file.name, type: file.type, base64, preview: dataUrl })
+            }
+            reader.readAsDataURL(file)
+          })
+      )
+    )
+    setImages((prev) => [...prev, ...results])
+  }
+
+  function handleDrop(e) {
+    e.preventDefault()
+    setDragOver(false)
+    if (e.dataTransfer?.files) processFiles(e.dataTransfer.files)
+  }
+
+  function handlePaste(e) {
+    const items = e.clipboardData?.items
+    if (!items) return
+    const files = []
+    for (const it of items) {
+      if (it.type && it.type.startsWith('image/')) {
+        const f = it.getAsFile()
+        if (f) files.push(f)
+      }
+    }
+    if (files.length) processFiles(files)
+  }
+
+  function removeAt(i) {
+    setImages((prev) => prev.filter((_, idx) => idx !== i))
+  }
+
+  return (
+    <div>
+      <div
+        onDragOver={(e) => {
+          e.preventDefault()
+          setDragOver(true)
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        onPaste={handlePaste}
+        onClick={() => inputRef.current?.click()}
+        className={`w-full px-4 py-6 border border-dashed rounded-stripe-sm text-center transition-colors cursor-pointer ${
+          dragOver
+            ? 'border-stripe-purple bg-stripe-purpleLight/20'
+            : 'border-stripe-border hover:border-stripe-purpleLight bg-white'
+        }`}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => e.target.files && processFiles(e.target.files)}
+        />
+        <div className="text-caption-sm text-stripe-body">
+          拖拽、粘贴或点击上传图片 · 最多 {maxImages} 张
+        </div>
+      </div>
+
+      {images.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {images.map((img, i) => (
+            <div
+              key={i}
+              className="relative w-16 h-16 rounded-stripe-sm overflow-hidden border border-stripe-border bg-white"
+            >
+              <img src={img.preview} alt={img.name} className="w-full h-full object-cover" />
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  removeAt(i)
+                }}
+                className="absolute top-0 right-0 w-5 h-5 flex items-center justify-center bg-stripe-ruby text-white text-[11px] rounded-bl-stripe-sm"
+                aria-label="删除"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const T = {
   // Accent — Claude's warm orange-brown
   primary:      '#b45309',
@@ -713,7 +818,6 @@ function QueryPage({ user }) {
   const [url, setUrl] = useState('')
   const [inquiry, setInquiry] = useState('')
   const [images, setImages] = useState([])       // [{name, base64, preview}]
-  const [dragOver, setDragOver] = useState(false)
   const [result, setResult] = useState('')
   const [loading, setLoading] = useState(false)
   const [streaming, setStreaming] = useState(false)
@@ -736,33 +840,6 @@ function QueryPage({ user }) {
   }, [enableIntel])
 
   const resultRef = useRef(null)
-  const fileInputRef = useRef(null)
-
-  const processFiles = (files) => {
-    setFieldErrors(p => ({...p, inquiry: null}))
-    const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-    const valid = Array.from(files).filter(f => allowed.includes(f.type)).slice(0, 4)
-    valid.forEach(file => {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const base64 = e.target.result.split(',')[1]
-        const preview = e.target.result
-        setImages(prev => {
-          if (prev.length >= 4) return prev
-          if (prev.find(img => img.name === file.name && img.base64 === base64)) return prev
-          return [...prev, { name: file.name, base64, preview, type: file.type }]
-        })
-      }
-      reader.readAsDataURL(file)
-    })
-  }
-
-  const handleDrop = (e) => {
-    e.preventDefault(); setDragOver(false)
-    processFiles(e.dataTransfer.files)
-  }
-
-  const removeImage = (idx) => setImages(prev => prev.filter((_, i) => i !== idx))
 
   const abortCtrlRef = useRef(null)
 
@@ -928,65 +1005,7 @@ function QueryPage({ user }) {
               </FormItem>
 
               <FormItem label="附加图片(可选)" hint="拖拽、粘贴或点击 · 最多 4 张">
-                {/* IMAGE_DROPZONE_PLACEHOLDER — R4.2 will replace this with <ImageDropzone/> */}
-                <div
-                  onDrop={handleDrop}
-                  onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-                  onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false) }}
-                  onPaste={e => {
-                    const items = Array.from(e.clipboardData?.items || [])
-                    const imageItems = items.filter(item => item.type.startsWith('image/'))
-                    if (imageItems.length > 0) {
-                      e.preventDefault()
-                      processFiles(imageItems.map(item => item.getAsFile()).filter(Boolean))
-                    }
-                  }}
-                  style={{
-                    border: `1.5px solid ${dragOver ? '#635bff' : '#e0e0e0'}`,
-                    borderRadius: 6,
-                    background: dragOver ? '#f5f4ff' : '#fafafa',
-                    transition: 'border-color 0.15s, background 0.15s',
-                    overflow: 'hidden',
-                  }}
-                >
-                  <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
-                    onChange={e => { processFiles(e.target.files); e.target.value = '' }} />
-
-                  {/* Image strip — shown when images uploaded */}
-                  {images.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '10px 12px', alignItems: 'center' }}>
-                      {images.map((img, idx) => (
-                        <div key={idx} style={{ position: 'relative', flexShrink: 0 }}>
-                          <img src={img.preview} alt={img.name}
-                            style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 4, border: '1px solid #e0e0e0', display: 'block' }} />
-                          <button type="button" onClick={e => { e.stopPropagation(); removeImage(idx) }}
-                            style={{ position: 'absolute', top: -5, right: -5, width: 17, height: 17, borderRadius: '50%', background: '#ff4d4f', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                      {images.length < 4 && (
-                        <div onClick={() => fileInputRef.current?.click()}
-                          style={{ width: 60, height: 60, border: '1.5px dashed #e0e0e0', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#aaa', fontSize: 20, cursor: 'pointer' }}>+</div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Bottom hint bar */}
-                  <div
-                    onClick={() => fileInputRef.current?.click()}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px 8px',
-                      color: dragOver ? '#635bff' : '#ccc', fontSize: 12, cursor: 'pointer',
-                      borderTop: images.length > 0 ? '1px solid #f0f0f0' : 'none', transition: 'color 0.15s' }}
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                      <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="1.8"/>
-                      <circle cx="8.5" cy="8.5" r="1.5" stroke="currentColor" strokeWidth="1.8"/>
-                      <path d="M21 15l-5-5L5 21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                    </svg>
-                    <span>{dragOver ? '松开即可上传' : '拖拽到此区域或点击上传名片/图片（最多4张，JPG、PNG）'}</span>
-                  </div>
-                </div>
+                <ImageDropzone images={images} setImages={setImages} maxImages={4} />
               </FormItem>
 
               <label className="flex items-center gap-2 text-caption text-stripe-label cursor-pointer select-none">
