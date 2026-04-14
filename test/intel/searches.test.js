@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { buildLinkedInQuery } from '@/lib/intel/searches/linkedin'
 import { buildFacebookQuery } from '@/lib/intel/searches/facebook'
 import { buildPanjivaQuery } from '@/lib/intel/searches/panjiva'
+import { buildNegativeQuery } from '@/lib/intel/searches/negative'
 
 describe('buildLinkedInQuery', () => {
   it('uses person + company when both are present', () => {
@@ -45,5 +46,23 @@ describe('buildPanjivaQuery', () => {
   })
   it('returns null without company name', () => {
     expect(buildPanjivaQuery({ personName: 'John' })).toBeNull()
+  })
+})
+
+describe('buildNegativeQuery', () => {
+  it('combines company name and fraud keywords', () => {
+    expect(buildNegativeQuery({ companyName: 'ABC Ltd' }))
+      .toBe('"ABC Ltd" (scam OR fraud OR 骗 OR complaint)')
+  })
+  it('falls back to email when company missing', () => {
+    expect(buildNegativeQuery({ email: 'a@b.com' }))
+      .toBe('"a@b.com" (scam OR fraud OR 骗 OR complaint)')
+  })
+  it('falls back to person name', () => {
+    expect(buildNegativeQuery({ personName: 'John Doe' }))
+      .toBe('"John Doe" (scam OR fraud OR 骗 OR complaint)')
+  })
+  it('returns null with no identifier', () => {
+    expect(buildNegativeQuery({})).toBeNull()
   })
 })
