@@ -800,7 +800,7 @@ function QueryPage({ user }) {
   const analyze = async () => {
     // Per-field validation
     const errs = {}
-    if (!url.trim()) errs.url = '请填写您的公司网址或公司信息'
+    if (!url.trim()) errs.url = '请填写我方公司网址'
     if (!inquiry.trim() && images.length === 0) errs.inquiry = '请填写询盘信息或上传名片图片'
     if (Object.keys(errs).length > 0) { setFieldErrors(errs); return }
     setFieldErrors({})
@@ -927,7 +927,7 @@ function QueryPage({ user }) {
               </button>
             </div>
             <div className="px-5 py-5 space-y-5">
-              <FormItem label="公司网址" hint="支持无 http:// 前缀" error={fieldErrors.url}>
+              <FormItem label="我方公司网址" hint="您自己的公司官网,用于让 AI 理解您的业务,不会被当作调查目标" error={fieldErrors.url}>
                 <textarea
                   value={url}
                   onChange={(e) => {
@@ -938,7 +938,7 @@ function QueryPage({ user }) {
                   className="w-full px-3 py-2 text-body font-light border border-stripe-border rounded-stripe-sm resize-none focus:outline-none focus:border-stripe-purple focus:ring-2 focus:ring-stripe-purple/20 transition"
                 />
               </FormItem>
-              <FormItem label="询盘内容" hint="可贴原始邮件正文" error={fieldErrors.inquiry}>
+              <FormItem label="客户询盘内容" hint="收到的邮件、WhatsApp、微信聊天原文" error={fieldErrors.inquiry}>
                 <textarea
                   value={inquiry}
                   onChange={(e) => {
@@ -950,7 +950,7 @@ function QueryPage({ user }) {
                 />
               </FormItem>
 
-              <FormItem label="附加图片(可选)" hint="拖拽、粘贴或点击 · 最多 4 张">
+              <FormItem label="客户名片 / 邮件截图(可选)" hint="上传后 AI 会 OCR 识别发件方信息 · 最多 4 张">
                 <ImageDropzone images={images} setImages={setImages} maxImages={4} />
               </FormItem>
 

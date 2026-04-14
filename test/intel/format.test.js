@@ -29,9 +29,9 @@ describe('formatIntelAsBriefing', () => {
   it('includes all 8 section headers in order', () => {
     const md = formatIntelAsBriefing(okIntel)
     const positions = [
-      '## 1. 抽取到的实体',
-      '## 2. 公司网站',
-      '## 3. 建站时间',
+      '## 1. 发件方实体识别',
+      '## 2. 发件方公司网站',
+      '## 3. 发件方建站时间',
       '## 4. LinkedIn',
       '## 5. Facebook',
       '## 6. Panjiva',

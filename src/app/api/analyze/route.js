@@ -54,6 +54,7 @@ export async function POST(req) {
           intel = await gatherIntel({
             url,
             inquiry,
+            images,
             apiKey,
             globalSettings,
             onProgress: (partial) => enqueue({ type: 'intel', partial }),
@@ -72,9 +73,21 @@ export async function POST(req) {
         : globalSettings.fallbackSystemPrompt
 
       const briefing = useBriefing ? formatIntelAsBriefing(intel) : ''
+
+      // Inject the user's own site content as a separate context block so the
+      // LLM can distinguish "us" from "the sender being investigated".
+      const userSite = intel?.userSite
+      const userSiteBlock = userSite?.status === 'ok'
+        ? `【我方公司背景(收件方,仅供语境参考)】\n` +
+          `网址:${url || '未提供'}\n` +
+          (userSite.title ? `标题:${userSite.title}\n` : '') +
+          `摘录:${(userSite.excerpt || '').slice(0, 1200).replace(/\n/g, ' ')}\n\n`
+        : `**我方公司网址:** ${url || '未提供'}\n\n`
+
       const textPart =
         (briefing ? `${briefing}\n\n---\n\n` : '') +
-        `**公司网址：** ${url || '未提供'}\n\n**询盘详细信息：**\n${inquiry || '未提供'}`
+        userSiteBlock +
+        `**客户询盘内容:**\n${inquiry || '未提供'}`
 
       let userContent
       if (images.length > 0) {

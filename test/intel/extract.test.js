@@ -27,6 +27,12 @@ describe('parseExtractionJson', () => {
   it('normalizes missing fields to null / empty products', () => {
     const out = parseExtractionJson('{"companyName":"A"}')
     expect(out.personName).toBeNull()
+    expect(out.companyUrl).toBeNull()
     expect(out.products).toEqual([])
+  })
+
+  it('extracts companyUrl when present', () => {
+    const out = parseExtractionJson('{"companyName":"ABC","companyUrl":"https://abc.com"}')
+    expect(out.companyUrl).toBe('https://abc.com')
   })
 })
