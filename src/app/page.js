@@ -184,7 +184,7 @@ function MarkdownRenderer({ content }) {
     // H1
     if (line.startsWith('# ')) {
       elements.push(
-        <h1 key={i} style={{ ...base, color: T.textPrimary, fontSize: 17, fontWeight: 600, margin: '0 0 16px', lineHeight: 1.4 }}>
+        <h1 key={i} className="text-heading font-light text-stripe-navy mt-8 first:mt-0 mb-4">
           {renderInline(line.slice(2))}
         </h1>
       )
@@ -194,24 +194,22 @@ function MarkdownRenderer({ content }) {
       const col = MD_SECTION_COLORS[h2Count % MD_SECTION_COLORS.length]
       h2Count++
       elements.push(
-        <div key={i} style={{ margin: '24px 0 10px', borderLeft: `3px solid ${col.border}`, paddingLeft: 12, background: col.bg, borderRadius: '0 6px 6px 0', padding: '8px 14px' }}>
-          <h2 style={{ margin: 0, fontFamily: T.fontUI, color: T.textPrimary, fontSize: 14, fontWeight: 600 }}>
-            {renderInline(line.slice(3))}
-          </h2>
-        </div>
+        <h2 key={i} className="text-subheading font-light text-stripe-navy mt-6 mb-3">
+          {renderInline(line.slice(3))}
+        </h2>
       )
 
     // H3
     } else if (line.startsWith('### ')) {
       elements.push(
-        <h3 key={i} style={{ ...base, color: T.textPrimary, fontSize: 14.5, fontWeight: 600, margin: '14px 0 5px' }}>
+        <h3 key={i} className="text-body-lg font-normal text-stripe-label mt-5 mb-2">
           {renderInline(line.slice(4))}
         </h3>
       )
 
     // HR
     } else if (line.trim() === '---') {
-      elements.push(<hr key={i} style={{ border: 'none', borderTop: `1px solid ${T.borderSecond}`, margin: '18px 0' }} />)
+      elements.push(<hr key={i} className="border-stripe-border my-6" />)
 
     // Bullet list
     } else if (/^[*-] /.test(line)) {
@@ -221,14 +219,11 @@ function MarkdownRenderer({ content }) {
         i++
       }
       elements.push(
-        <div key={`ul-${i}`} style={{ margin: '6px 0 10px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+        <ul key={`ul-${i}`} className="list-disc ml-6 space-y-1.5 mb-4 marker:text-stripe-purple">
           {items.map(item => (
-            <div key={item.key} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-              <span style={{ color: T.primary, flexShrink: 0, fontSize: 12, marginTop: 4, opacity: 0.8 }}>•</span>
-              <span style={{ ...base, flex: 1 }}>{renderInline(item.text)}</span>
-            </div>
+            <li key={item.key} className="text-body font-light text-stripe-navy">{renderInline(item.text)}</li>
           ))}
-        </div>
+        </ul>
       )
       continue
 
@@ -241,14 +236,11 @@ function MarkdownRenderer({ content }) {
         i++
       }
       elements.push(
-        <div key={`ol-${i}`} style={{ margin: '6px 0 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <ol key={`ol-${i}`} className="list-decimal ml-6 space-y-1.5 mb-4 marker:text-stripe-purple">
           {items.map(item => (
-            <div key={item.key} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-              <span style={{ color: T.textTertiary, flexShrink: 0, fontSize: 13, fontWeight: 500, minWidth: 18, textAlign: 'right', marginTop: 2 }}>{item.num}.</span>
-              <span style={{ ...base, flex: 1 }}>{renderInline(item.text)}</span>
-            </div>
+            <li key={item.key} className="text-body font-light text-stripe-navy">{renderInline(item.text)}</li>
           ))}
-        </div>
+        </ol>
       )
       continue
 
@@ -265,12 +257,12 @@ function MarkdownRenderer({ content }) {
       const header = parseRow(tableLines[0])
       const body = tableLines.slice(2).map(parseRow) // skip separator row
       elements.push(
-        <div key={`table-${i}`} style={{ margin: '12px 0 16px', overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, fontFamily: T.fontBody }}>
+        <div key={`table-${i}`} className="overflow-x-auto">
+          <table className="w-full my-4 text-caption border-collapse">
             <thead>
-              <tr style={{ background: T.bgContainer }}>
+              <tr>
                 {header.map((h, ci) => (
-                  <th key={ci} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: T.textPrimary, borderBottom: `2px solid ${T.border}`, whiteSpace: 'nowrap' }}>
+                  <th key={ci} className="border-b border-stripe-border font-normal text-stripe-label text-left py-2 px-3">
                     {renderInline(h)}
                   </th>
                 ))}
@@ -278,9 +270,9 @@ function MarkdownRenderer({ content }) {
             </thead>
             <tbody>
               {body.map((row, ri) => (
-                <tr key={ri} style={{ borderBottom: `1px solid ${T.borderSecond}`, background: ri % 2 === 1 ? T.bgContainer : 'transparent' }}>
+                <tr key={ri}>
                   {row.map((cell, ci) => (
-                    <td key={ci} style={{ padding: '8px 12px', color: T.textSecondary, lineHeight: 1.6, verticalAlign: 'top' }}>
+                    <td key={ci} className="border-b border-stripe-border/50 py-2 px-3 text-stripe-body">
                       {renderInline(cell)}
                     </td>
                   ))}
@@ -317,19 +309,19 @@ function MarkdownRenderer({ content }) {
         continue
       }
       elements.push(
-        <blockquote key={i} style={{ margin: '8px 0', padding: '8px 14px', background: T.bgContainer, borderLeft: `2px solid ${T.border}`, borderRadius: '0 6px 6px 0', color: T.textSecondary, fontSize: 14.5, fontStyle: 'italic', lineHeight: 1.7 }}>
+        <blockquote key={i} className="border-l-2 border-stripe-purple pl-4 py-1 my-4 text-stripe-body italic">
           {renderInline(line.slice(2))}
         </blockquote>
       )
 
     // Empty line
     } else if (line.trim() === '') {
-      elements.push(<div key={i} style={{ height: 4 }} />)
+      elements.push(<div key={i} className="h-1" />)
 
     // Paragraph
     } else {
       elements.push(
-        <p key={i} style={{ ...base, margin: '2px 0 6px' }}>
+        <p key={i} className="text-body font-light text-stripe-navy leading-relaxed mb-4">
           {renderInline(line)}
         </p>
       )
@@ -337,8 +329,8 @@ function MarkdownRenderer({ content }) {
     i++
   }
 
-  return <div style={{ userSelect: 'text' }}>{elements}</div>
-  } catch (err) { return <div style={{ color: T.textTertiary, fontSize: 13, padding: '8px 0' }}>内容渲染失败</div> }
+  return <div className="select-text">{elements}</div>
+  } catch (err) { return <div className="text-caption text-stripe-body py-2">内容渲染失败</div> }
 }
 
 function renderInline(text) {
@@ -350,13 +342,13 @@ function renderInline(text) {
     let safety = 0
     while (remaining.length > 0 && safety++ < 2000) {
       const bi = remaining.match(/^\*\*\*(.*?)\*\*\*/)
-      if (bi) { parts.push(<strong key={key++} style={{ fontWeight: 600, fontStyle: 'italic', color: T.textPrimary }}>{bi[1]}</strong>); remaining = remaining.slice(bi[0].length); continue }
+      if (bi) { parts.push(<strong key={key++} className="font-normal text-stripe-navy italic">{bi[1]}</strong>); remaining = remaining.slice(bi[0].length); continue }
       const b = remaining.match(/^\*\*(.*?)\*\*/)
-      if (b) { parts.push(<strong key={key++} style={{ fontWeight: 600, color: T.textPrimary }}>{b[1]}</strong>); remaining = remaining.slice(b[0].length); continue }
+      if (b) { parts.push(<strong key={key++} className="font-normal text-stripe-navy">{b[1]}</strong>); remaining = remaining.slice(b[0].length); continue }
       const it = remaining.match(/^\*(.*?)\*/)
-      if (it) { parts.push(<em key={key++} style={{ fontStyle: 'italic', color: T.textSecondary }}>{it[1]}</em>); remaining = remaining.slice(it[0].length); continue }
+      if (it) { parts.push(<em key={key++} className="italic">{it[1]}</em>); remaining = remaining.slice(it[0].length); continue }
       const co = remaining.match(/^`(.*?)`/)
-      if (co) { parts.push(<code key={key++} style={{ background: 'rgba(0,0,0,0.05)', border: `1px solid ${T.border}`, borderRadius: 4, padding: '1px 6px', fontFamily: T.fontMono, fontSize: '0.88em', color: T.textPrimary }}>{co[1]}</code>); remaining = remaining.slice(co[0].length); continue }
+      if (co) { parts.push(<code key={key++} className="font-mono text-caption-sm px-1.5 py-0.5 bg-stripe-border/50 rounded-stripe-sm text-stripe-navyDeep">{co[1]}</code>); remaining = remaining.slice(co[0].length); continue }
       const next = remaining.search(/[\*`]/)
       if (next <= 0) { parts.push(<span key={key++}>{remaining}</span>); break }
       parts.push(<span key={key++}>{remaining.slice(0, next)}</span>)
