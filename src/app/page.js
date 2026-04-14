@@ -505,6 +505,7 @@ function QueryPage({ user }) {
   })
   const [intel, setIntel] = useState(null)
   const [intelProgress, setIntelProgress] = useState({})
+  const [intelWarning, setIntelWarning] = useState('')
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -561,6 +562,7 @@ function QueryPage({ user }) {
     setLoading(true); setError(''); setResult(''); setStreaming(true); setInputCollapsed(true)
     setIntel(null)
     setIntelProgress({})
+    setIntelWarning('')
 
     const abortCtrl = new AbortController()
     abortCtrlRef.current = abortCtrl
@@ -611,8 +613,12 @@ function QueryPage({ user }) {
 
           const type = msg.type || (msg.delta ? 'delta' : msg.error ? 'error' : null)
 
-          if (type === 'error' || type === 'intelError') {
+          if (type === 'error') {
             throw new Error(msg.error || '未知错误')
+          }
+          if (type === 'intelError') {
+            setIntelWarning(msg.error || '情报收集失败')
+            continue
           }
           if (type === 'intel') {
             lastContentAt = Date.now()
@@ -794,6 +800,12 @@ function QueryPage({ user }) {
         </div>
         </div>}
       </div>
+
+      {intelWarning && (
+        <div style={{ padding: '8px 12px', marginBottom: 12, fontSize: 12, color: '#9a6700', background: '#fff8c5', border: '1px solid #d4a72c', borderRadius: 6 }}>
+          ⚠️ 实时情报收集失败(已降级到基础分析):{intelWarning}
+        </div>
+      )}
 
       {(intel || Object.keys(intelProgress).length > 0) && (
         <IntelPanel intel={intel || intelProgress} />
@@ -1008,7 +1020,7 @@ function HistoryPage({ user }) {
                         }
                         return q.intel
                       })()
-                      const historyIntelEnabled = q.intelEnabled === 'true' || q.intelEnabled === true
+                      const historyIntelEnabled = parsedIntel && q.intelEnabled !== 'false' && q.intelEnabled !== false
                       return historyIntelEnabled && parsedIntel ? <IntelPanel intel={parsedIntel} /> : null
                     })()}
                     <div>
