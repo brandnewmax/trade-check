@@ -298,6 +298,93 @@ function extractScore(t) {
   return null
 }
 
+function IntelCard({ title, section, children }) {
+  const status = section?.status
+  const color =
+    status === 'ok' ? '#1a7f37' :
+    status === 'failed' ? '#cf222e' :
+    status === 'skipped' ? '#6e7781' :
+    '#848d97'
+  const label =
+    status === 'ok' ? '✓ 已获取' :
+    status === 'failed' ? '✗ 失败' :
+    status === 'skipped' ? '⊘ 跳过' :
+    '… 加载中'
+  return (
+    <div style={{
+      border: '1px solid #d0d7de', borderRadius: 8, padding: 12,
+      background: '#fff', fontSize: 13,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+        <strong>{title}</strong>
+        <span style={{ color, fontSize: 12 }}>{label}</span>
+      </div>
+      <div style={{ color: '#57606a' }}>{children}</div>
+    </div>
+  )
+}
+
+function IntelPanel({ intel }) {
+  if (!intel) return null
+  const e = intel.extracted || {}
+  return (
+    <div style={{ border: '1px solid #d0d7de', borderRadius: 12, padding: 16, background: '#f6f8fa', marginBottom: 16 }}>
+      <div style={{ fontSize: 13, color: '#57606a', marginBottom: 10 }}>
+        🔍 实时情报{intel.meta?.durationMs ? `(${intel.meta.durationMs}ms)` : '(收集中…)'}
+      </div>
+      {e && (e.companyName || e.personName || e.email) && (
+        <div style={{ fontSize: 12, color: '#24292f', marginBottom: 10 }}>
+          <b>识别实体:</b>
+          {e.companyName && <> 公司:{e.companyName}</>}
+          {e.personName && <> · 人:{e.personName}{e.personTitle ? `(${e.personTitle})` : ''}</>}
+          {e.email && <> · 邮箱:{e.email}</>}
+          {e.country && <> · 国家:{e.country}</>}
+        </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
+        <IntelCard title="公司网站" section={intel.website}>
+          {intel.website?.title || intel.website?.error || '—'}
+        </IntelCard>
+        <IntelCard title="建站时间" section={intel.wayback}>
+          {intel.wayback?.firstSnapshot
+            ? `最早快照 ${intel.wayback.firstSnapshot} (约 ${intel.wayback.ageYears} 年)`
+            : intel.wayback?.error || '无记录'}
+        </IntelCard>
+        <IntelCard title="LinkedIn" section={intel.linkedin}>
+          {intel.linkedin?.status === 'ok'
+            ? (intel.linkedin.found ? `找到 ${intel.linkedin.topResults.length} 条` : '未找到')
+            : intel.linkedin?.error || '—'}
+          {intel.linkedin?.topResults?.slice(0, 2).map((r, i) => (
+            <div key={i} style={{ marginTop: 4 }}>
+              <a href={r.link} target="_blank" rel="noreferrer">{r.title}</a>
+            </div>
+          ))}
+        </IntelCard>
+        <IntelCard title="Facebook" section={intel.facebook}>
+          {intel.facebook?.status === 'ok'
+            ? (intel.facebook.found ? `找到 ${intel.facebook.topResults.length} 条` : '未找到')
+            : intel.facebook?.error || '—'}
+        </IntelCard>
+        <IntelCard title="Panjiva 海关足迹" section={intel.panjiva}>
+          {intel.panjiva?.status === 'ok'
+            ? (intel.panjiva.hasRecord ? `搜到 ${intel.panjiva.resultCount} 条` : '未发现')
+            : intel.panjiva?.error || '—'}
+        </IntelCard>
+        <IntelCard title="负面 / 诈骗搜索" section={intel.negative}>
+          {intel.negative?.status === 'ok'
+            ? (intel.negative.hitCount > 0 ? `⚠️ 发现 ${intel.negative.hitCount} 条` : '未发现')
+            : intel.negative?.error || '—'}
+          {intel.negative?.hits?.slice(0, 2).map((r, i) => (
+            <div key={i} style={{ marginTop: 4 }}>
+              <a href={r.link} target="_blank" rel="noreferrer">{r.title}</a>
+            </div>
+          ))}
+        </IntelCard>
+      </div>
+    </div>
+  )
+}
+
 function ScoreBadge({ score, size = 'md' }) {
   const cfg = score === null
     ? { bg: 'rgba(255,255,255,0.06)', color: T.textTertiary, border: T.border, label: '—' }
@@ -411,6 +498,21 @@ function QueryPage({ user }) {
   const [inputCollapsed, setInputCollapsed] = useState(false)
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
+  const [enableIntel, setEnableIntel] = useState(() => {
+    if (typeof window === 'undefined') return true
+    const v = window.localStorage.getItem('trade-check:enableIntel')
+    return v === null ? true : v === 'true'
+  })
+  const [intel, setIntel] = useState(null)
+  const [intelProgress, setIntelProgress] = useState({})
+  const [intelWarning, setIntelWarning] = useState('')
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('trade-check:enableIntel', String(enableIntel))
+    }
+  }, [enableIntel])
+
   const resultRef = useRef(null)
   const fileInputRef = useRef(null)
 
@@ -458,6 +560,9 @@ function QueryPage({ user }) {
     if (Object.keys(errs).length > 0) { setFieldErrors(errs); return }
     setFieldErrors({})
     setLoading(true); setError(''); setResult(''); setStreaming(true); setInputCollapsed(true)
+    setIntel(null)
+    setIntelProgress({})
+    setIntelWarning('')
 
     const abortCtrl = new AbortController()
     abortCtrlRef.current = abortCtrl
@@ -474,7 +579,12 @@ function QueryPage({ user }) {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, inquiry, images: images.map(img => ({ base64: img.base64, type: img.type })) }),
+        body: JSON.stringify({
+          url,
+          inquiry,
+          images: images.map(img => ({ base64: img.base64, type: img.type })),
+          enableIntel,
+        }),
         signal: abortCtrl.signal,
       })
       if (!res.ok) {
@@ -496,16 +606,42 @@ function QueryPage({ user }) {
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue
           const raw = line.slice(6).trim()
-          if (raw === '') continue // heartbeat comment line
-          try {
-            const msg = JSON.parse(raw)
-            if (msg.error) throw new Error(msg.error)
-            if (msg.delta) {
-              lastContentAt = Date.now() // reset watchdog on real content
-              setResult(prev => prev + msg.delta)
-              if (resultRef.current) resultRef.current.scrollTop = resultRef.current.scrollHeight
-            }
-          } catch (e) { if (e.message !== 'Unexpected end of JSON input') throw e }
+          if (raw === '') continue
+          let msg
+          try { msg = JSON.parse(raw) }
+          catch (e) { if (e.message !== 'Unexpected end of JSON input') throw e; continue }
+
+          const type = msg.type || (msg.delta ? 'delta' : msg.error ? 'error' : null)
+
+          if (type === 'error') {
+            throw new Error(msg.error || '未知错误')
+          }
+          if (type === 'intelError') {
+            setIntelWarning(msg.error || '情报收集失败')
+            continue
+          }
+          if (type === 'intel') {
+            lastContentAt = Date.now()
+            setIntelProgress(prev => ({ ...prev, ...msg.partial }))
+            continue
+          }
+          if (type === 'intelDone') {
+            lastContentAt = Date.now()
+            setIntel(msg.intel)
+            setIntelProgress(msg.intel || {})
+            continue
+          }
+          if (type === 'delta' && msg.delta) {
+            lastContentAt = Date.now()
+            setResult(prev => prev + msg.delta)
+            if (resultRef.current) resultRef.current.scrollTop = resultRef.current.scrollHeight
+            continue
+          }
+          if (type === 'done') {
+            lastContentAt = Date.now()
+            if (msg.intel) setIntel(msg.intel)
+            continue
+          }
         }
       }
     } catch (e) {
@@ -639,7 +775,16 @@ function QueryPage({ user }) {
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: T.textSecondary, marginRight: 12, cursor: 'pointer', userSelect: 'none' }}>
+            <input
+              type="checkbox"
+              checked={enableIntel}
+              onChange={(e) => setEnableIntel(e.target.checked)}
+              disabled={loading || streaming}
+            />
+            启用实时情报检索
+          </label>
           <button onClick={loading ? undefined : analyze} disabled={loading} style={{ flex: 1, padding: '10px', border: 'none', borderRadius: T.radiusMd, cursor: loading ? 'default' : 'pointer', background: loading ? 'rgba(180,83,9,0.35)' : T.primary, color: '#fff', fontSize: 15, fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, letterSpacing: '0.01em' }}>
             {loading
               ? <><Spinner color="#fff" />AI 分析中...</>
@@ -655,6 +800,16 @@ function QueryPage({ user }) {
         </div>
         </div>}
       </div>
+
+      {intelWarning && (
+        <div style={{ padding: '8px 12px', marginBottom: 12, fontSize: 12, color: '#9a6700', background: '#fff8c5', border: '1px solid #d4a72c', borderRadius: 6 }}>
+          ⚠️ 实时情报收集失败(已降级到基础分析):{intelWarning}
+        </div>
+      )}
+
+      {(intel || Object.keys(intelProgress).length > 0) && (
+        <IntelPanel intel={intel || intelProgress} />
+      )}
 
       {/* Result card */}
       {(result || streaming) && (
@@ -857,6 +1012,17 @@ function HistoryPage({ user }) {
                         </div>
                       )}
                     </div>
+                    {(() => {
+                      const parsedIntel = (() => {
+                        if (!q.intel) return null
+                        if (typeof q.intel === 'string') {
+                          try { return JSON.parse(q.intel) } catch { return null }
+                        }
+                        return q.intel
+                      })()
+                      const historyIntelEnabled = parsedIntel && q.intelEnabled !== 'false' && q.intelEnabled !== false
+                      return historyIntelEnabled && parsedIntel ? <IntelPanel intel={parsedIntel} /> : null
+                    })()}
                     <div>
                       <div style={{ color: T.textTertiary, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>分析结果</div>
                       <div style={{ background: T.bgContainer, borderRadius: T.radiusMd, padding: '16px 20px', maxHeight: 400, overflowY: 'auto' }}>
@@ -876,19 +1042,52 @@ function HistoryPage({ user }) {
 
 // ─── SETTINGS PAGE ────────────────────────────────────────────────────────────
 function SettingsPage({ user }) {
-  const [form, setForm] = useState({ baseUrl: '', systemPrompt: '', apiKey: '', modelName: 'gemini-3.1-pro-preview-vertex' })
+  const [form, setForm] = useState({
+    baseUrl: '',
+    systemPrompt: '',
+    fallbackSystemPrompt: '',
+    serpApiKey: '',
+    extractionModel: 'gemini-2.5-flash',
+    extractionPrompt: '',
+    apiKey: '',
+    modelName: 'gemini-3.1-pro-preview-vertex',
+  })
+  const [serpUsage, setSerpUsage] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [showKey, setShowKey] = useState(false)
 
   useEffect(() => {
-    fetch('/api/settings').then(r => r.json()).then(d => { setForm(f => ({ ...f, ...d })); setLoading(false) })
+    fetch('/api/settings').then(r => r.json()).then(d => {
+      setForm(f => ({
+        ...f,
+        baseUrl: d.baseUrl ?? '',
+        systemPrompt: d.systemPrompt ?? '',
+        fallbackSystemPrompt: d.fallbackSystemPrompt ?? '',
+        serpApiKey: d.serpApiKey ?? '',
+        extractionModel: d.extractionModel ?? 'gemini-2.5-flash',
+        extractionPrompt: d.extractionPrompt ?? '',
+        apiKey: d.apiKey ?? '',
+        modelName: d.modelName ?? f.modelName,
+      }))
+      if (d.serpUsage) setSerpUsage(d.serpUsage)
+      setLoading(false)
+    })
   }, [])
 
   const save = async () => {
     setSaving(true)
-    await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
+    await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      baseUrl: form.baseUrl,
+      systemPrompt: form.systemPrompt,
+      fallbackSystemPrompt: form.fallbackSystemPrompt,
+      serpApiKey: form.serpApiKey,
+      extractionModel: form.extractionModel,
+      extractionPrompt: form.extractionPrompt,
+      apiKey: form.apiKey,
+      modelName: form.modelName,
+    }) })
     setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2500)
   }
 
@@ -998,6 +1197,52 @@ function SettingsPage({ user }) {
               <textarea value={form.systemPrompt || ''} onChange={e => setForm({ ...form, systemPrompt: e.target.value })}
                 rows={14} style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.7, fontSize: 13 }} />
             </FormItem>
+
+            <div style={{ marginTop: 16 }}>
+              <label style={{ fontSize: 12, color: T.textSecondary }}>SerpAPI Key(仅管理员)</label>
+              <input
+                type="password"
+                value={form.serpApiKey || ''}
+                onChange={e => setForm({ ...form, serpApiKey: e.target.value })}
+                placeholder="sk-serp-..."
+                style={{ width: '100%', padding: 8, marginTop: 4 }}
+              />
+              {serpUsage && (
+                <div style={{ fontSize: 11, color: T.textTertiary, marginTop: 4 }}>
+                  本月已调用 {serpUsage.count} 次 ({serpUsage.month})
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginTop: 16 }}>
+              <label style={{ fontSize: 12, color: T.textSecondary }}>结构化抽取模型</label>
+              <input
+                value={form.extractionModel || ''}
+                onChange={e => setForm({ ...form, extractionModel: e.target.value })}
+                placeholder="gemini-2.5-flash"
+                style={{ width: '100%', padding: 8, marginTop: 4 }}
+              />
+            </div>
+
+            <div style={{ marginTop: 16 }}>
+              <label style={{ fontSize: 12, color: T.textSecondary }}>抽取 Prompt</label>
+              <textarea
+                value={form.extractionPrompt || ''}
+                onChange={e => setForm({ ...form, extractionPrompt: e.target.value })}
+                rows={6}
+                style={{ width: '100%', padding: 8, marginTop: 4, fontFamily: T.fontMono }}
+              />
+            </div>
+
+            <div style={{ marginTop: 16 }}>
+              <label style={{ fontSize: 12, color: T.textSecondary }}>降级 System Prompt(用户关闭检索或情报失败时使用)</label>
+              <textarea
+                value={form.fallbackSystemPrompt || ''}
+                onChange={e => setForm({ ...form, fallbackSystemPrompt: e.target.value })}
+                rows={6}
+                style={{ width: '100%', padding: 8, marginTop: 4, fontFamily: T.fontMono }}
+              />
+            </div>
           </div>
         )}
       </div>
