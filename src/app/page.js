@@ -1000,6 +1000,17 @@ function HistoryPage({ user }) {
                         </div>
                       )}
                     </div>
+                    {(() => {
+                      const parsedIntel = (() => {
+                        if (!q.intel) return null
+                        if (typeof q.intel === 'string') {
+                          try { return JSON.parse(q.intel) } catch { return null }
+                        }
+                        return q.intel
+                      })()
+                      const historyIntelEnabled = q.intelEnabled === 'true' || q.intelEnabled === true
+                      return historyIntelEnabled && parsedIntel ? <IntelPanel intel={parsedIntel} /> : null
+                    })()}
                     <div>
                       <div style={{ color: T.textTertiary, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>分析结果</div>
                       <div style={{ background: T.bgContainer, borderRadius: T.radiusMd, padding: '16px 20px', maxHeight: 400, overflowY: 'auto' }}>
