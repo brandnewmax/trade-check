@@ -578,19 +578,6 @@ function IntelPanel({ intel }) {
           )}
         </IntelCard>
 
-        <IntelCard title="建站时间" section={intel.wayback}>
-          {intel.wayback?.status === 'ok' ? (
-            intel.wayback.firstSnapshot ? (
-              <>
-                <div>最早快照:<span className="font-mono text-stripe-navy">{intel.wayback.firstSnapshot}</span></div>
-                <div className="mt-0.5">建站约 <span className="font-mono text-stripe-navy">{intel.wayback.ageYears}</span> 年{intel.wayback.ageYears != null && intel.wayback.ageYears < 2 && ' ⚠️'}</div>
-              </>
-            ) : '无快照记录'
-          ) : (
-            intel.wayback?.error || '—'
-          )}
-        </IntelCard>
-
         <IntelCard title="LinkedIn" section={intel.linkedin}>
           {intel.linkedin?.status === 'ok' ? (
             <>
@@ -644,6 +631,33 @@ function IntelPanel({ intel }) {
             </>
           ) : (
             intel.negative?.error || '—'
+          )}
+        </IntelCard>
+
+        <IntelCard title="发件方电话" section={intel.phone}>
+          {intel.phone?.status === 'ok' ? (
+            <>
+              <IntelQueryLine value={intel.phone.query} />
+              <div>{intel.phone.hitCount > 0 ? `✓ 找到 ${intel.phone.hitCount} 条公开记录` : '✗ 未发现公开记录'}</div>
+              {intel.phone.hits?.map((r, i) => (
+                <IntelResultItem key={i} index={i} result={r} />
+              ))}
+            </>
+          ) : (
+            intel.phone?.error || '—'
+          )}
+        </IntelCard>
+
+        <IntelCard title="建站时间" section={intel.wayback}>
+          {intel.wayback?.status === 'ok' ? (
+            intel.wayback.firstSnapshot ? (
+              <>
+                <div>最早快照:<span className="font-mono text-stripe-navy">{intel.wayback.firstSnapshot}</span></div>
+                <div className="mt-0.5">建站约 <span className="font-mono text-stripe-navy">{intel.wayback.ageYears}</span> 年{intel.wayback.ageYears != null && intel.wayback.ageYears < 2 && ' ⚠️'}</div>
+              </>
+            ) : '无快照记录'
+          ) : (
+            intel.wayback?.error || '—'
           )}
         </IntelCard>
       </div>

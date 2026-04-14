@@ -22,6 +22,7 @@ const okIntel = {
   facebook: { status: 'ok', query: 'site:facebook.com "ABC Ltd"', found: false, topResults: [] },
   panjiva: { status: 'ok', query: 'site:panjiva.com "ABC Ltd"', hasRecord: true, resultCount: 12, topResults: [] },
   negative: { status: 'ok', query: '"ABC Ltd" (scam)', hitCount: 0, hits: [] },
+  phone: { status: 'ok', query: '"+12345"', hitCount: 0, hits: [] },
   generalSearch: { status: 'ok', query: '"ABC Ltd"', topResults: [] },
 }
 
@@ -31,12 +32,13 @@ describe('formatIntelAsBriefing', () => {
     const positions = [
       '## 1. 发件方实体识别',
       '## 2. 发件方公司网站',
-      '## 3. 发件方建站时间',
-      '## 4. LinkedIn',
-      '## 5. Facebook',
-      '## 6. Panjiva',
-      '## 7. 负面',
+      '## 3. LinkedIn',
+      '## 4. Facebook',
+      '## 5. Panjiva',
+      '## 6. 负面',
+      '## 7. 发件方电话',
       '## 8. 通用搜索',
+      '## 9. 发件方建站时间',
     ].map(h => md.indexOf(h))
     expect(positions.every(p => p >= 0)).toBe(true)
     for (let i = 1; i < positions.length; i++) {

@@ -76,3 +76,21 @@ describe('buildGeneralQuery', () => {
     expect(buildGeneralQuery({ personName: 'X' })).toBeNull()
   })
 })
+
+import { buildPhoneQuery } from '@/lib/intel/searches/phone'
+
+describe('buildPhoneQuery', () => {
+  it('quotes a simple phone number', () => {
+    expect(buildPhoneQuery({ phone: '+15551234567' })).toBe('"+15551234567"')
+  })
+  it('strips spaces, hyphens, and parentheses before quoting', () => {
+    expect(buildPhoneQuery({ phone: '+1 (555) 123-4567' })).toBe('"+15551234567"')
+  })
+  it('returns null when phone is missing', () => {
+    expect(buildPhoneQuery({})).toBeNull()
+    expect(buildPhoneQuery({ phone: null })).toBeNull()
+  })
+  it('returns null for unreasonably short strings', () => {
+    expect(buildPhoneQuery({ phone: '123' })).toBeNull()
+  })
+})
