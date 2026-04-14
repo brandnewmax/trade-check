@@ -298,6 +298,93 @@ function extractScore(t) {
   return null
 }
 
+function IntelCard({ title, section, children }) {
+  const status = section?.status
+  const color =
+    status === 'ok' ? '#1a7f37' :
+    status === 'failed' ? '#cf222e' :
+    status === 'skipped' ? '#6e7781' :
+    '#848d97'
+  const label =
+    status === 'ok' ? '✓ 已获取' :
+    status === 'failed' ? '✗ 失败' :
+    status === 'skipped' ? '⊘ 跳过' :
+    '… 加载中'
+  return (
+    <div style={{
+      border: '1px solid #d0d7de', borderRadius: 8, padding: 12,
+      background: '#fff', fontSize: 13,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+        <strong>{title}</strong>
+        <span style={{ color, fontSize: 12 }}>{label}</span>
+      </div>
+      <div style={{ color: '#57606a' }}>{children}</div>
+    </div>
+  )
+}
+
+function IntelPanel({ intel }) {
+  if (!intel) return null
+  const e = intel.extracted || {}
+  return (
+    <div style={{ border: '1px solid #d0d7de', borderRadius: 12, padding: 16, background: '#f6f8fa', marginBottom: 16 }}>
+      <div style={{ fontSize: 13, color: '#57606a', marginBottom: 10 }}>
+        🔍 实时情报{intel.meta?.durationMs ? `(${intel.meta.durationMs}ms)` : '(收集中…)'}
+      </div>
+      {e && (e.companyName || e.personName || e.email) && (
+        <div style={{ fontSize: 12, color: '#24292f', marginBottom: 10 }}>
+          <b>识别实体:</b>
+          {e.companyName && <> 公司:{e.companyName}</>}
+          {e.personName && <> · 人:{e.personName}{e.personTitle ? `(${e.personTitle})` : ''}</>}
+          {e.email && <> · 邮箱:{e.email}</>}
+          {e.country && <> · 国家:{e.country}</>}
+        </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
+        <IntelCard title="公司网站" section={intel.website}>
+          {intel.website?.title || intel.website?.error || '—'}
+        </IntelCard>
+        <IntelCard title="建站时间" section={intel.wayback}>
+          {intel.wayback?.firstSnapshot
+            ? `最早快照 ${intel.wayback.firstSnapshot} (约 ${intel.wayback.ageYears} 年)`
+            : intel.wayback?.error || '无记录'}
+        </IntelCard>
+        <IntelCard title="LinkedIn" section={intel.linkedin}>
+          {intel.linkedin?.status === 'ok'
+            ? (intel.linkedin.found ? `找到 ${intel.linkedin.topResults.length} 条` : '未找到')
+            : intel.linkedin?.error || '—'}
+          {intel.linkedin?.topResults?.slice(0, 2).map((r, i) => (
+            <div key={i} style={{ marginTop: 4 }}>
+              <a href={r.link} target="_blank" rel="noreferrer">{r.title}</a>
+            </div>
+          ))}
+        </IntelCard>
+        <IntelCard title="Facebook" section={intel.facebook}>
+          {intel.facebook?.status === 'ok'
+            ? (intel.facebook.found ? `找到 ${intel.facebook.topResults.length} 条` : '未找到')
+            : intel.facebook?.error || '—'}
+        </IntelCard>
+        <IntelCard title="Panjiva 海关足迹" section={intel.panjiva}>
+          {intel.panjiva?.status === 'ok'
+            ? (intel.panjiva.hasRecord ? `搜到 ${intel.panjiva.resultCount} 条` : '未发现')
+            : intel.panjiva?.error || '—'}
+        </IntelCard>
+        <IntelCard title="负面 / 诈骗搜索" section={intel.negative}>
+          {intel.negative?.status === 'ok'
+            ? (intel.negative.hitCount > 0 ? `⚠️ 发现 ${intel.negative.hitCount} 条` : '未发现')
+            : intel.negative?.error || '—'}
+          {intel.negative?.hits?.slice(0, 2).map((r, i) => (
+            <div key={i} style={{ marginTop: 4 }}>
+              <a href={r.link} target="_blank" rel="noreferrer">{r.title}</a>
+            </div>
+          ))}
+        </IntelCard>
+      </div>
+    </div>
+  )
+}
+
 function ScoreBadge({ score, size = 'md' }) {
   const cfg = score === null
     ? { bg: 'rgba(255,255,255,0.06)', color: T.textTertiary, border: T.border, label: '—' }
@@ -707,6 +794,10 @@ function QueryPage({ user }) {
         </div>
         </div>}
       </div>
+
+      {(intel || Object.keys(intelProgress).length > 0) && (
+        <IntelPanel intel={intel || intelProgress} />
+      )}
 
       {/* Result card */}
       {(result || streaming) && (
