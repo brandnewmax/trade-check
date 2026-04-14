@@ -1,45 +1,10 @@
-* { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; }
-body {
-  font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont,
-    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
-  background: #f7f4ef;
-  color: #1a1309;
-  font-size: 15px;
-  line-height: 1.75;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-input, textarea, button, select {
-  font-family: inherit;
-  font-size: inherit;
-}
-input:focus, textarea:focus {
-  outline: none;
-  border-color: rgba(180,83,9,0.4) !important;
-  box-shadow: 0 0 0 2px rgba(180,83,9,0.1) !important;
-}
-textarea { resize: vertical; }
-::selection {
-  background: rgba(180,83,9,0.15);
-  color: #1a1309;
-}
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(26,19,9,0.15); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(26,19,9,0.25); }
-@keyframes spin { to { transform: rotate(360deg); } }
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-select {
-  font-family: inherit;
-  font-size: inherit;
-}
-select:focus {
-  outline: none;
-  border-color: rgba(180,83,9,0.4) !important;
-  box-shadow: 0 0 0 2px rgba(180,83,9,0.1) !important;
-}
-select option {
-  background: #f0ece4;
-  color: #1a1309;
+@layer base {
+  html,
+  body {
+    @apply antialiased;
+  }
 }
