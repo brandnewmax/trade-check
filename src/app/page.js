@@ -505,14 +505,15 @@ function ScoreBadge({ score, size = 'md' }) {
 }
 
 // ─── FORM COMPONENTS ──────────────────────────────────────────────────────────
-function FormItem({ label, hint, children }) {
+function FormItem({ label, hint, children, error }) {
   return (
-    <div style={{ marginBottom: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
-        <label style={{ color: T.textSecondary, fontSize: 13, fontWeight: 500 }}>{label}</label>
-        {hint && <span style={{ color: T.textTertiary, fontSize: 11.5 }}>{hint}</span>}
-      </div>
+    <div>
+      {label && (
+        <label className="text-caption text-stripe-label font-normal block mb-2">{label}</label>
+      )}
       {children}
+      {hint && !error && <div className="mt-1.5 text-caption-sm text-stripe-body">{hint}</div>}
+      {error && <div className="mt-1.5 text-caption-sm text-stripe-ruby">{error}</div>}
     </div>
   )
 }
