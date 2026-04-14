@@ -206,44 +206,6 @@ function ImageDropzone({ images, setImages, maxImages = 4 }) {
   )
 }
 
-const T = {
-  // Accent — Claude's warm orange-brown
-  primary:      '#b45309',
-  primaryHover: '#92400e',
-  primaryBg:    'rgba(180,83,9,0.08)',
-  primaryBorder:'rgba(180,83,9,0.25)',
-  success:      '#15803d',
-  successBg:    'rgba(21,128,61,0.08)',
-  warning:      '#b45309',
-  warningBg:    'rgba(180,83,9,0.08)',
-  error:        '#b91c1c',
-  errorBg:      'rgba(185,28,28,0.06)',
-  // Text — Claude's warm dark text on light background
-  textPrimary:  '#1a1309',   // near-black warm
-  textSecondary:'#5c4f3a',   // warm medium gray
-  textTertiary: '#9c8a72',   // warm light gray
-  textDisabled: '#c4b49e',
-  // Surface — Claude's warm off-white / cream
-  bgLayout:     '#f7f4ef',   // Claude's main background (warm cream)
-  bgSider:      '#f0ece4',   // slightly darker cream for sidebar
-  bgContainer:  'rgba(0,0,0,0.03)',
-  bgElevated:   '#ffffff',   // card surfaces
-  bgInput:      '#ffffff',
-  // Border
-  border:       'rgba(26,19,9,0.12)',
-  borderSecond: 'rgba(26,19,9,0.07)',
-  // Radius
-  radiusSm: 6,
-  radiusMd: 8,
-  radiusLg: 12,
-  // Shadow
-  shadow: '0 1px 3px rgba(0,0,0,0.08), 0 0 0 1px rgba(26,19,9,0.06)',
-  shadowCard: '0 2px 8px rgba(0,0,0,0.06), 0 0 0 1px rgba(26,19,9,0.06)',
-  // Fonts — Instrument Sans (closest to Claude Sans) + system fallback
-  fontUI:   "'Instrument Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', system-ui, sans-serif",
-  fontBody: "'Instrument Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', system-ui, sans-serif",
-  fontMono: "'SFMono-Regular', 'Consolas', 'Liberation Mono', monospace",
-}
 
 // ─── SPINNER ──────────────────────────────────────────────────────────────────
 function Spinner({ size = 16, color = '#533afd' }) {
@@ -281,7 +243,7 @@ function MarkdownRenderer({ content }) {
   let safetyLoopCount = 0
 
   // Base text style — matches Claude's body text
-  const base = { fontFamily: T.fontBody, fontSize: 15, lineHeight: 1.8, color: T.textPrimary }
+  const base = { fontFamily: "'Instrument Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', system-ui, sans-serif", fontSize: 15, lineHeight: 1.8, color: '#1a1309' }
 
   while (i < lines.length && safetyLoopCount++ < 5000) {
     const line = lines[i]
@@ -402,11 +364,11 @@ function MarkdownRenderer({ content }) {
           i++
         }
         elements.push(
-          <div key={`email-${i}`} style={{ margin: '12px 0 16px', background: '#fafaf8', border: `1px solid ${T.border}`, borderRadius: T.radiusMd, overflow: 'hidden' }}>
-            <div style={{ padding: '6px 16px', background: T.bgContainer, borderBottom: `1px solid ${T.borderSecond}`, fontSize: 11, color: T.textTertiary, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+          <div key={`email-${i}`} style={{ margin: '12px 0 16px', background: '#fafaf8', border: '1px solid rgba(26,19,9,0.12)', borderRadius: 8, overflow: 'hidden' }}>
+            <div style={{ padding: '6px 16px', background: 'rgba(0,0,0,0.03)', borderBottom: '1px solid rgba(26,19,9,0.07)', fontSize: 11, color: '#9c8a72', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
               参考回复邮件
             </div>
-            <div style={{ padding: '16px 20px', fontFamily: "'Georgia', serif", fontSize: 14, lineHeight: 2, color: T.textPrimary, whiteSpace: 'pre-wrap' }}>
+            <div style={{ padding: '16px 20px', fontFamily: "'Georgia', serif", fontSize: 14, lineHeight: 2, color: '#1a1309', whiteSpace: 'pre-wrap' }}>
               {emailLines.join('\n')}
             </div>
           </div>
@@ -475,14 +437,14 @@ class SafeMarkdown extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ color: T.textTertiary, fontSize: 13, padding: '12px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ color: '#9c8a72', fontSize: 13, padding: '12px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
           此记录内容格式异常，无法显示
         </div>
       )
     }
     const { text } = this.props
-    if (!text || typeof text !== 'string') return <span style={{ color: T.textTertiary, fontSize: 13 }}>无内容</span>
+    if (!text || typeof text !== 'string') return <span style={{ color: '#9c8a72', fontSize: 13 }}>无内容</span>
     return <MarkdownRenderer content={text} />
   }
 }
@@ -677,11 +639,11 @@ function PasswordInput({ value, onChange, placeholder, autoComplete }) {
 
 const inputStyle = {
   width: '100%', boxSizing: 'border-box',
-  background: T.bgInput,
-  border: `1px solid ${T.border}`,
-  borderRadius: T.radiusMd,
+  background: '#ffffff',
+  border: '1px solid rgba(26,19,9,0.12)',
+  borderRadius: 8,
   padding: '8px 12px',
-  color: T.textPrimary,
+  color: '#1a1309',
   fontSize: 15,
   lineHeight: 1.6,
   outline: 'none',
@@ -1650,7 +1612,7 @@ export default function App() {
 
   const logout = async () => { await fetch('/api/auth', { method: 'DELETE' }); setUser(null); setPage('query') }
 
-  if (checking) return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: T.bgLayout }}><Spinner size={32} color={T.textTertiary} /></div>
+  if (checking) return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f7f4ef' }}><Spinner size={32} color="#9c8a72" /></div>
   if (!user) return <LoginPage onLogin={setUser} />
 
   const content = page === 'history' ? <HistoryPage user={user} />
