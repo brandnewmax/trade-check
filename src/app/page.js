@@ -518,6 +518,30 @@ function FormItem({ label, hint, children, error }) {
   )
 }
 
+function PasswordInput({ value, onChange, placeholder, autoComplete }) {
+  const [show, setShow] = useState(false)
+  return (
+    <div className="relative">
+      <input
+        type={show ? 'text' : 'password'}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        className="w-full h-10 px-3 pr-10 text-body font-light bg-white border border-stripe-border rounded-stripe-sm focus:outline-none focus:border-stripe-purple focus:ring-2 focus:ring-stripe-purple/20 transition"
+      />
+      <button
+        type="button"
+        onClick={() => setShow((v) => !v)}
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-stripe-body hover:text-stripe-purple"
+        aria-label={show ? '隐藏' : '显示'}
+      >
+        <EyeIcon open={show} />
+      </button>
+    </div>
+  )
+}
+
 const inputStyle = {
   width: '100%', boxSizing: 'border-box',
   background: T.bgInput,
