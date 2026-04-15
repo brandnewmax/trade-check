@@ -208,6 +208,7 @@ export async function POST(req) {
 
           enqueue({ type: 'done', result: fullText, riskLevel, intel })
 
+          const extracted = intel?.extracted || null
           saveQuery({
             userEmail: session.email,
             url: url?.trim() || '',
@@ -220,6 +221,10 @@ export async function POST(req) {
             scoreCustomer,
             scoreMatch,
             scoreStrategy,
+            customerName: extracted?.companyName || null,
+            customerUrl: extracted?.companyUrl || null,
+            customerEmail: extracted?.email || null,
+            customerCountry: extracted?.country || null,
             createdAt: new Date().toISOString(),
             model: modelName,
             intel,

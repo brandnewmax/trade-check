@@ -1191,10 +1191,21 @@ function HistoryCard({ query, active, onClick }) {
           : 'bg-white border-stripe-border hover:border-stripe-purpleLight'
       }`}
     >
-      <div className="mb-2">
-        <span className="block text-caption font-mono text-stripe-label truncate">
-          {query.url || '(无URL)'}
+      <div className="mb-2 min-w-0">
+        <div className="flex items-center gap-1.5 mb-0.5">
+          <span className="text-[10px] uppercase tracking-wide text-stripe-purple font-medium">客户</span>
+          {query.customerCountry && (
+            <span className="text-caption-sm text-stripe-body">· {query.customerCountry}</span>
+          )}
+        </div>
+        <span className="block text-caption font-medium text-stripe-navy truncate">
+          {query.customerName || query.customerUrl || query.customerEmail || '(未识别客户)'}
         </span>
+        {(query.customerUrl || query.customerEmail) && query.customerName && (
+          <span className="block text-caption-sm font-mono text-stripe-body truncate mt-0.5">
+            {query.customerUrl || query.customerEmail}
+          </span>
+        )}
       </div>
       {anyScore && (
         <div className="grid grid-cols-2 gap-x-2 gap-y-1 mb-2">
