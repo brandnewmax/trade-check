@@ -1154,7 +1154,7 @@ function isValidRecord(q) {
 }
 
 function HistoryCard({ query, active, onClick }) {
-  const score = extractScore(query.result)
+  const score = query.riskLevel || extractScore(query.result)
   const hasIntel = query.intelEnabled === 'true' || query.intelEnabled === true
   const when = query.createdAt
     ? new Date(query.createdAt).toLocaleString('zh-CN', {
@@ -1212,7 +1212,8 @@ function HistoryPage({ user }) {
   const handleSelect = async (q) => {
     if (selected === q) { setSelected(null); return }
     setSelected(q)
-    if (q.intel !== undefined || !q.id) return
+    // `result` is absent from the lean list payload; presence means we already hydrated.
+    if (q.result !== undefined || !q.id) return
     setDetailLoading(true)
     try {
       const r = await fetch(`/api/queries/${encodeURIComponent(q.id)}`)
@@ -1303,8 +1304,8 @@ function HistoryPage({ user }) {
                     <span className="text-caption-sm text-stripe-body">
                       {new Date(selected.createdAt).toLocaleString('zh-CN')}
                     </span>
-                    {extractScore(selected.result) && (
-                      <ScoreBadge score={extractScore(selected.result)} />
+                    {(selected.riskLevel || extractScore(selected.result)) && (
+                      <ScoreBadge score={selected.riskLevel || extractScore(selected.result)} />
                     )}
                   </div>
                   <div className="text-caption font-mono text-stripe-label break-all">
@@ -1326,10 +1327,17 @@ function HistoryPage({ user }) {
                 )}
 
                 <div className="bg-white border border-stripe-border rounded-stripe shadow-stripe-card p-6">
-                  <article className="max-w-none">
-                    <MarkdownRenderer content={selected.result} />
-                    <AiDisclaimer />
-                  </article>
+                  {selected.result ? (
+                    <article className="max-w-none">
+                      <MarkdownRenderer content={selected.result} />
+                      <AiDisclaimer />
+                    </article>
+                  ) : (
+                    <div className="py-10 flex items-center justify-center gap-3 text-caption text-stripe-body">
+                      <Spinner />
+                      <span>加载分析报告…</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )
