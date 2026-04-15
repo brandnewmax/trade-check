@@ -1058,7 +1058,7 @@ function QueryPage({ user }) {
                   onChange={(e) => setEnableIntel(e.target.checked)}
                   className="accent-stripe-purple w-4 h-4"
                 />
-                启用实时情报检索
+                启用实时情报检测+升级分析模型
               </label>
               {error && <div className="text-caption text-stripe-ruby">{error}</div>}
             </div>
