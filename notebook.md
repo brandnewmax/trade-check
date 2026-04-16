@@ -16,6 +16,7 @@
 | 2. Stripe 风格重设计 | [#2](https://github.com/brandnewmax/trade-check/pull/2) | ✅ 已合并 | Tailwind + Geist;11 组件全重写;左侧栏 shell;分裂登录页;两栏分析页 |
 | 3. 发件方/我方角色反转 | [#3](https://github.com/brandnewmax/trade-check/pull/3) | ✅ 已合并 | 情报以发件方为调查目标;图片多模态抽取;fallback 链 |
 | 4. 后续热修复 | 直接推 main | ✅ 全部部署 | 见下文"增量修复"一节 |
+| 5. 历史页性能 + 卡片重设计 | 直接推 main | ✅ 全部部署 | pipeline 批处理 + 懒加载 + 4 维分数卡片 + 客户标识 |
 
 **测试状态**: 55/55 单元测试通过 · `npm run build` 干净
 
@@ -89,7 +90,7 @@
 - `user:{email}` · 用户账号
 - `global_settings` · baseUrl / systemPrompt / fallbackSystemPrompt / serpApiKey / extractionModel / extractionPrompt
 - `user_settings:{email}` · apiKey / modelName
-- `query:{ts}:{rand}` · 单次分析记录,包含完整 `intel` JSON 和 `intelEnabled` 标记
+- `query:{ts}:{rand}` · 单次分析记录,包含完整 `intel` JSON、`intelEnabled` 标记、`scoreInquiry/scoreCustomer/scoreMatch/scoreStrategy`(4 维分数)、`customerName/customerUrl/customerEmail/customerCountry`(客户身份)
 - `queries:all` / `queries:user:{email}` · 历史列表
 - `serpapi:usage:{YYYY-MM}` · 月度 SerpAPI 调用计数器
 
@@ -241,7 +242,7 @@ borderRadius: stripe-sm(4) / stripe(6) / stripe-lg(8)
 - `IntelPanel` 顶部在抽取失败时显示红色横幅,说明模型 + 错误
 - 这让我在 Railway 日志里看到了真正的原因:`companyName: PROSTYLE, companyUrl: null` ——抽取调用**成功**,只是 LLM 主动没填 URL
 
-### ⑭ ★ 名片 URL 抽取的根治:加 OCR 预处理 pass
+### ⑭ ★ 名片 URL 抽取的根治：加 OCR 预处理 pass
 **问题**(通过 ⑬ 的诊断才看清):Claude Sonnet 4.6 / Gemini Pro 等强多模态模型在严格 JSON 结构化输出模式下会对"不 100% 确定"的字段返回 null,哪怕图片里写得清清楚楚。同一个模型在阶段 4 自由叙述时就能读出 URL——只是阶段 2 的抽取不敢填。日志铁证:
 ```
 [intel/extract] ok {
@@ -266,6 +267,35 @@ borderRadius: stripe-sm(4) / stripe(6) / stripe-lg(8)
 [intel/extract] companyUrl recovered via regex fallback: https://mail.msupernova.com
 ```
 fallback 链确实在救命,LLM 仍然经常在 JSON 模式下漏 URL,但正则 + 邮箱兜底让最终 companyUrl 有值的比例大大提升。
+
+### ⑮ 历史列表性能优化三连(10.8s → 1.5s)
+**问题**: 历史页加载需 10+ 秒。50 条记录各发一次 Upstash REST 请求 + 每条拉完整 `intel` JSON(~50KB)和 `result` markdown(~3.6KB),总 payload 达 339KB+。
+**修**(分三步):
+1. **Pipeline 批处理**(`329d123`):50 次 `hgetall` 改为 `kv.pipeline()` 一次执行,50 次 HTTP 压成 1 次
+2. **Intel 懒加载**(`7bf5532`):列表 `hmget` 只拉 LIST_FIELDS(跳过 `intel`),新增 `GET /api/queries/[id]` 端点按需拉完整记录。前端点卡片时异步补拉
+3. **Result 懒加载**(`89631d4`):发现 `result` 占 88% payload(181KB/207KB),也从列表移除。卡片风险徽章改用已存储的 `riskLevel` 字段
+
+**效果**: payload 339KB → 19KB(~18×),端到端 10.8s → 1.5s(~7×)。TTFB ~1.2s 是 Upstash pipeline 往返的固有延迟。
+
+### ⑯ Checkbox 文案更新
+**修**(`cbb1909`): "启用实时情报检索" 改为 "启用实时情报检测+升级分析模型"
+
+### ⑰ 历史卡片显示 4 维战略分数
+**问题**: 卡片只显示 URL + 时间,没有分析结论一览。
+**修**:
+- `analyze/route.js` 在 save 时从 LLM markdown 正则抽取 4 个分数字段:`scoreInquiry`(询盘质量分)/ `scoreCustomer`(客户实力分)/ `scoreMatch`(匹配度得分)/ `scoreStrategy`(综合战略分)
+- 加入 LIST_FIELDS,卡片上以 2×2 彩色圆点网格显示(ruby/success/purple/lemon)
+- 标签:询盘质量 / 客户实力 / 双方匹配 / 战略综合
+- "含情报" 改为 "实时数据"
+- 去掉原有的风险等级徽章(待定/低风险)
+
+### ⑱ 历史卡片显示客户(发件方)身份
+**问题**: 卡片显示的是用户自己的网址(query.url),而不是被调查的客户。
+**修**:
+- `analyze/route.js` 在 save 时从 `intel.extracted` 提取 `customerName`/`customerUrl`/`customerEmail`/`customerCountry` 存为顶级字段
+- LIST_FIELDS 加入这 4 个字段
+- 卡片标头改为「客户 · 国家」+ 客户公司名 + 客户域名/邮箱
+- 回填脚本 `scripts/backfill-history-fields.mjs` 对生产库 61 条记录跑了一次:29 条补上了客户信息,7 条补上了分数
 
 ---
 
@@ -312,6 +342,9 @@ test/intel/
 ├── format.test.js           4 tests · 节顺序 + 状态渲染
 └── searches.test.js         19 tests · 所有 buildQuery 纯函数
 
+scripts/
+└── backfill-history-fields.mjs  一次性回填脚本(分数 + 客户字段)
+
 docs/superpowers/
 ├── specs/
 │   ├── 2026-04-14-online-intel-retrieval-design.md        (PR #1 设计)
@@ -336,6 +369,8 @@ DESIGN.md                     awesome-design-md 的 Stripe 参考(npx getdesign 
 6. **历史记录里的老 intel** —— 结构变了以后,老记录的 intel JSON 字段可能对不齐。IntelPanel 的可选链(`intel.xxx?.status`)大部分防得住,但新字段(如 phone、userContext、meta.extractionStatus)在老记录里是 undefined。
 7. **Settings 页的 prompt 是否更新需要手动操作** —— 改默认 prompt 后要去管理员设置清空对应 textarea 再保存,才能让 kv 里的值走新默认。
 8. **OCR 预处理双倍 LLM 调用** —— 每次带图分析多 ~$0.01 成本,可接受但注意用量。
+9. **4 维分数依赖 LLM 输出格式** —— 正则从 markdown 匹配 `X / 100` 模式,如果 prompt 或模型变化导致格式不同,分数会为 null。老记录大部分没有分数(prompt 演化前)。
+10. **历史列表 TTFB 仍 ~1.2s** —— 已从 10.8s 降到 1.5s,剩余是 Upstash pipeline 网络往返,进一步优化需要 pre-aggregate 或 CDN 缓存。
 
 ---
 
@@ -347,15 +382,17 @@ DESIGN.md                     awesome-design-md 的 Stripe 参考(npx getdesign 
 - [ ] 考虑把 `transcribeImages` 的结果也传给阶段 4 主分析 LLM,让它直接看到一份转录而不只依赖图片——进一步降低最终报告漏信息的风险
 - [ ] 历史记录页显示 `intel.meta.extractionStatus` 的状态徽章
 - [ ] Serper / LLM 调用的错误 metrics 聚合(用于预警)
+- [ ] 历史列表进一步提速:考虑 pre-aggregate 列表元数据到一个 Redis hash 或加 CDN 缓存
+- [ ] 4 维分数的 prompt 硬约束:在 systemPrompt 里加明确的分数输出格式要求,确保正则永远匹配
 
 ---
 
 ## Git 主分支状态
 
-最新 commit: `1e35066 fix(intel): add dedicated OCR pre-pass for image extraction`
+最新 commit: `7a50842 ui: rename score chip labels`
 远程: `origin/main` 同步
 PR: 无开启中
-总计本轮:PR #1(29 commit)+ PR #2(22 commit)+ PR #3(9 commit)+ 14 次 hotfix 直推
+总计本轮:PR #1(29 commit)+ PR #2(22 commit)+ PR #3(9 commit)+ 21 次 hotfix 直推
 
 ### Hotfix 时间线
 ```
@@ -370,5 +407,13 @@ bb222f3 feat(ui): add AI disclaimer below analysis reports
 2a177f3 feat(intel): derive companyUrl from corporate email domain
 cefbeb2 feat(ui): expand intel cards with query line and full result list
 213424d diag(intel): log extraction + surface errors in intel panel
-1e35066 fix(intel): add dedicated OCR pre-pass for image extraction   ← 最新
+1e35066 fix(intel): add dedicated OCR pre-pass for image extraction
+e606296 docs: update notebook.md with OCR pre-pass fix and hotfix timeline
+329d123 perf(kv): batch getQueries hgetall calls via Upstash pipeline
+cbb1909 ui: update intel checkbox label to mention model upgrade
+7bf5532 perf(history): lazy-load heavy intel blob; list uses lean hmget
+89631d4 perf(history): drop result markdown from list payload too
+6e49b9c feat(history): show 4 dimension scores on history cards
+3e2456e feat(history): surface customer (发件方) identity on history cards
+7a50842 ui: rename score chip labels   ← 最新
 ```
