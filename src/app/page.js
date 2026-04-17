@@ -1250,6 +1250,12 @@ function HistoryCard({ query, active, onClick }) {
         <span>{when}</span>
         {hasIntel && <span className="text-stripe-purple">实时数据</span>}
       </div>
+      {query.channel && (
+        <div className="mt-1.5 flex items-center gap-1.5 min-w-0">
+          <span className="text-[10px] uppercase tracking-wide text-stripe-purple font-medium shrink-0">渠道</span>
+          <span className="text-caption-sm text-stripe-label truncate">{query.channel}</span>
+        </div>
+      )}
     </button>
   )
 }
