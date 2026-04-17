@@ -212,7 +212,7 @@ export async function POST(req) {
           }
           const scoreInquiry = pickScore('询盘质量分')
           const scoreCustomer = pickScore('客户实力分')
-          const scoreMatch = pickScore('匹配度得分')
+          const scoreMatch = pickScore('匹配度(?:得)?分')
           const scoreStrategy = pickScore('综合战略分')
 
           enqueue({ type: 'done', result: fullText, riskLevel, intel })

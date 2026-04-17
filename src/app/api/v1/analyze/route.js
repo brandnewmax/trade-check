@@ -251,7 +251,7 @@ export async function POST(req) {
         const scores = {
           inquiry: pickScore('询盘质量分'),
           customer: pickScore('客户实力分'),
-          match: pickScore('匹配度得分'),
+          match: pickScore('匹配度(?:得)?分'),
           strategy: pickScore('综合战略分'),
         }
 
