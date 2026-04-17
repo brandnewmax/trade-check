@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react'
 
 const INQUIRY_CHANNELS = [
   '官网 · SEO 自然流量询盘',
-  '官网 · Google 搜索广告询盘',
+  '官网 · Google 广告询盘',
   '官网 · Facebook / Instagram / 内容类广告',
   '直接邮件联系',
   '外贸开发信回复',
