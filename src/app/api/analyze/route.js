@@ -192,10 +192,16 @@ export async function POST(req) {
         clearInterval(heartbeatTimer)
 
         if (fullText) {
-          const riskLevel = fullText.includes('高风险') ? 'high'
+          const riskMatched = fullText.includes('高风险') ? 'high'
             : fullText.includes('中风险') ? 'medium'
             : fullText.includes('低风险') ? 'low'
-            : 'unknown'
+            : null
+          const riskLevel = riskMatched || 'medium'
+          if (!riskMatched) {
+            console.warn('[analyze] risk_level keyword miss, defaulting to medium', {
+              model: modelName, email: session.email,
+            })
+          }
 
           const pickScore = (label) => {
             const re = new RegExp(label + '[^0-9]{0,30}(\\d{1,3})\\s*\\/\\s*100')
