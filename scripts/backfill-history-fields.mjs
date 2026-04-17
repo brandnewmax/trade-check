@@ -18,7 +18,7 @@ const SCORE_LABELS = {
   scoreInquiry: '询盘质量分',
   scoreCustomer: '客户实力分',
   scoreMatch: '匹配度得分',
-  scoreStrategy: '综合战略分',
+  scoreStrategy: '老板雷达分',
 }
 
 function pickScore(text, label) {

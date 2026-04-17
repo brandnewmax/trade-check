@@ -1243,7 +1243,7 @@ function HistoryCard({ query, active, onClick }) {
           <ScoreChip label="询盘质量" value={query.scoreInquiry}  color="bg-stripe-ruby" />
           <ScoreChip label="客户实力" value={query.scoreCustomer} color="bg-stripe-success" />
           <ScoreChip label="双方匹配" value={query.scoreMatch}    color="bg-stripe-purple" />
-          <ScoreChip label="战略综合" value={query.scoreStrategy} color="bg-stripe-lemon" />
+          <ScoreChip label="老板雷达" value={query.scoreStrategy} color="bg-stripe-lemon" />
         </div>
       )}
       <div className="flex items-center justify-between text-caption-sm text-stripe-body">
