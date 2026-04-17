@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { getGlobalSettings, getUserSettings, saveQuery } from '@/lib/kv'
 import { gatherIntel, formatIntelAsBriefing } from '@/lib/intel'
+import { newRequestId, hashInquiry, writeObservationLog } from '@/lib/obs'
 
 // ─── SERVICE_API_KEY auth ───────────────────────────────────────────────────
 function authenticateService(req) {
@@ -34,12 +35,43 @@ export async function POST(req) {
   const encoder = new TextEncoder()
   const streamStart = Date.now()
   const HEARTBEAT_MS = 8000
+  const requestId = newRequestId()
+  const inputHash = hashInquiry(inquiry)
 
   const stream = new ReadableStream({
     async start(controller) {
       let heartbeatTimer = null
       let currentStage = 'queued'
       let closed = false
+
+      // Observation log state — mutated as the request progresses.
+      // recordObs() is idempotent (fires once).
+      const obs = {
+        enableIntel: options.enable_intel !== false,
+        riskLevel: null, scores: null, model: null, tokens: null,
+        fired: false,
+      }
+      const recordObs = (status, errorCode) => {
+        if (obs.fired) return
+        obs.fired = true
+        writeObservationLog(requestId, {
+          request_id: requestId,
+          timestamp: new Date().toISOString(),
+          user_id: 'service',
+          input_hash: inputHash,
+          output_summary: status === 'success' ? {
+            risk_level: obs.riskLevel,
+            scores: obs.scores,
+            model: obs.model,
+            tokens: obs.tokens,
+          } : null,
+          elapsed_ms: Date.now() - streamStart,
+          enable_intel: obs.enableIntel,
+          source: 'sn_platform_api',
+          status,
+          error_code: errorCode,
+        })
+      }
 
       const emit = (event, data) => {
         if (closed) return
@@ -64,6 +96,7 @@ export async function POST(req) {
       const fail = (code, message) => {
         emit('error', { code, message })
         close()
+        recordObs('error', code)
       }
 
       // 首字节 deadline: emit the first progress immediately so the Vercel
@@ -87,6 +120,7 @@ export async function POST(req) {
         const modelName = adminSettings.modelName?.trim() || 'gemini-3.1-pro-preview-vertex'
 
         const enableIntel = options.enable_intel !== false
+        obs.enableIntel = enableIntel
         if (enableIntel && !globalSettings.serpApiKey?.trim()) {
           return fail('config', 'SerpAPI Key not configured, set enable_intel: false to skip')
         }
@@ -296,6 +330,11 @@ export async function POST(req) {
         }).catch(() => {})
 
         // ── Done ────────────────────────────────────────────────────────────
+        obs.riskLevel = riskLevel
+        obs.scores = scores
+        obs.model = modelName
+        obs.tokens = tokens
+
         emit('done', {
           ok: true,
           data: {
@@ -321,6 +360,7 @@ export async function POST(req) {
           },
         })
         close()
+        recordObs('success', null)
       } catch (e) {
         fail('internal', String(e?.message || e).slice(0, 300))
       }

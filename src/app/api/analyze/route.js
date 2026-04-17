@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { requireSession } from '@/lib/auth'
 import { getGlobalSettings, getUserSettings, saveQuery } from '@/lib/kv'
 import { gatherIntel, formatIntelAsBriefing } from '@/lib/intel'
+import { newRequestId, hashInquiry, writeObservationLog } from '@/lib/obs'
 
 export async function POST(req) {
   const { session, error, status } = await requireSession()
@@ -36,11 +37,43 @@ export async function POST(req) {
   const decoder = new TextDecoder()
   const HEARTBEAT_INTERVAL = 8000
   const streamStart = Date.now()
+  const requestId = newRequestId()
+  const inputHash = hashInquiry(inquiry)
 
   const stream = new ReadableStream({
     async start(controller) {
       let heartbeatTimer = null
       let currentStage = 'init'
+
+      // Observation log state — mutated as the request progresses.
+      // recordObs() is idempotent (fires once).
+      const obs = {
+        enableIntel: !!enableIntel,
+        riskLevel: null, scores: null, model: null, tokens: null,
+        fired: false,
+      }
+      const recordObs = (status, errorCode) => {
+        if (obs.fired) return
+        obs.fired = true
+        writeObservationLog(requestId, {
+          request_id: requestId,
+          timestamp: new Date().toISOString(),
+          user_id: 'web',
+          input_hash: inputHash,
+          output_summary: status === 'success' ? {
+            risk_level: obs.riskLevel,
+            scores: obs.scores,
+            model: obs.model,
+            tokens: obs.tokens,
+          } : null,
+          elapsed_ms: Date.now() - streamStart,
+          enable_intel: obs.enableIntel,
+          source: 'web_frontend',
+          status,
+          error_code: errorCode,
+        })
+      }
+
       const enqueue = (obj) => {
         try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`)) } catch {}
       }
@@ -148,6 +181,7 @@ export async function POST(req) {
         enqueue({ type: 'error', error: `无法连接到 API：${e.message}` })
         clearInterval(heartbeatTimer)
         try { controller.close() } catch {}
+        recordObs('error', 'llm')
         return
       }
 
@@ -158,6 +192,7 @@ export async function POST(req) {
         enqueue({ type: 'error', error: `API 错误 ${upstreamRes.status}：${String(detail).slice(0, 300)}` })
         clearInterval(heartbeatTimer)
         try { controller.close() } catch {}
+        recordObs('error', 'llm')
         return
       }
 
@@ -239,8 +274,15 @@ export async function POST(req) {
             intel,
             intelEnabled: enableIntel,
           }).catch(() => {})
+
+          obs.riskLevel = riskLevel
+          obs.scores = { inquiry: scoreInquiry, customer: scoreCustomer, match: scoreMatch, strategy: scoreStrategy }
+          obs.model = modelName
+          obs.tokens = { prompt: null, completion: null } // streaming LLM path — usage not captured
+          recordObs('success', null)
         } else {
           enqueue({ type: 'error', error: 'AI 返回空内容,请检查 Model Name 是否正确' })
+          recordObs('error', 'llm')
         }
         try { controller.close() } catch {}
       }
