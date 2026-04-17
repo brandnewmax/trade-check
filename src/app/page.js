@@ -720,6 +720,105 @@ function FormItem({ label, hint, children, error }) {
   )
 }
 
+function ChevronDownIcon({ className = '', size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function CheckIcon({ className = '', size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M5 13L9 17L19 7" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function Select({ value, onChange, options, placeholder = '请选择', hasError = false }) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDocDown = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false)
+    }
+    const onKey = (e) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onDocDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDocDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const pick = (v) => {
+    onChange(v)
+    setOpen(false)
+  }
+
+  const base =
+    'w-full h-10 pl-3 pr-9 text-left text-body font-light bg-white border rounded-stripe-sm transition focus:outline-none'
+  const stateCls = hasError
+    ? 'border-stripe-ruby focus:border-stripe-ruby focus:ring-2 focus:ring-stripe-ruby/20'
+    : open
+      ? 'border-stripe-purple ring-2 ring-stripe-purple/20'
+      : 'border-stripe-border focus:border-stripe-purple focus:ring-2 focus:ring-stripe-purple/20'
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={`${base} ${stateCls}`}
+      >
+        <span className={`truncate block ${value ? 'text-stripe-label' : 'text-stripe-body'}`}>
+          {value || placeholder}
+        </span>
+        <span
+          className={`pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-stripe-body transition-transform ${
+            open ? 'rotate-180 text-stripe-purple' : ''
+          }`}
+        >
+          <ChevronDownIcon />
+        </span>
+      </button>
+      {open && (
+        <ul
+          role="listbox"
+          className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-stripe-border rounded-stripe-sm shadow-stripe-elevated max-h-64 overflow-y-auto py-1"
+        >
+          {options.map((opt) => {
+            const selected = opt === value
+            return (
+              <li
+                key={opt}
+                role="option"
+                aria-selected={selected}
+                onClick={() => pick(opt)}
+                className={`relative flex items-center justify-between gap-2 px-3 py-2 cursor-pointer text-body transition-colors ${
+                  selected
+                    ? 'text-stripe-purple font-medium bg-stripe-purpleLight/20'
+                    : 'text-stripe-label font-light hover:bg-stripe-border/40'
+                }`}
+              >
+                <span className="truncate">{opt}</span>
+                {selected && <CheckIcon className="shrink-0 text-stripe-purple" />}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 function PasswordInput({ value, onChange, placeholder, autoComplete }) {
   const [show, setShow] = useState(false)
   return (
@@ -1052,19 +1151,16 @@ function QueryPage({ user }) {
                 />
               </FormItem>
               <FormItem label="询盘渠道" hint="客户是通过哪个渠道找到您的,用于 AI 结合来源判断可信度" error={fieldErrors.channel}>
-                <select
+                <Select
                   value={channel}
-                  onChange={(e) => {
-                    setChannel(e.target.value)
-                    if (e.target.value) setFieldErrors((p) => ({ ...p, channel: null }))
+                  onChange={(v) => {
+                    setChannel(v)
+                    if (v) setFieldErrors((p) => ({ ...p, channel: null }))
                   }}
-                  className="w-full h-10 px-3 text-body font-light bg-white border border-stripe-border rounded-stripe-sm focus:outline-none focus:border-stripe-purple focus:ring-2 focus:ring-stripe-purple/20 transition"
-                >
-                  <option value="">— 请选择 —</option>
-                  {INQUIRY_CHANNELS.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
+                  options={INQUIRY_CHANNELS}
+                  placeholder="— 请选择 —"
+                  hasError={!!fieldErrors.channel}
+                />
               </FormItem>
               <FormItem label="客户询盘内容" hint="收到的邮件、WhatsApp、微信聊天原文" error={fieldErrors.inquiry}>
                 <textarea
