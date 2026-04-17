@@ -644,6 +644,33 @@ function IntelPanel({ intel }) {
           )}
         </IntelCard>
 
+        <IntelCard title="实地核验" section={intel.maps}>
+          {intel.maps?.status === 'ok' ? (
+            <>
+              <IntelQueryLine value={intel.maps.query} />
+              <div>{intel.maps.hasRecord ? `✓ Maps 找到 ${intel.maps.resultCount} 个地点` : '✗ Maps 未收录(可能新公司或地址造假)'}</div>
+              {intel.maps.places?.map((p, i) => (
+                <div key={i} className="mt-2 text-[11px] leading-relaxed">
+                  <div className="font-normal text-stripe-navy line-clamp-1" title={p.title}>
+                    {i + 1}. {p.title || '(无标题)'}
+                  </div>
+                  {p.address && (
+                    <div className="text-stripe-body/80 mt-0.5 line-clamp-2">{p.address}</div>
+                  )}
+                  <div className="text-stripe-body/70 mt-0.5 flex flex-wrap gap-x-2">
+                    {p.category && <span>{p.category}</span>}
+                    {p.rating != null && (
+                      <span>★ {p.rating}{p.ratingCount ? ` (${p.ratingCount})` : ''}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </>
+          ) : (
+            intel.maps?.error || '—'
+          )}
+        </IntelCard>
+
         <IntelCard title="负面搜索" section={intel.negative}>
           {intel.negative?.status === 'ok' ? (
             <>

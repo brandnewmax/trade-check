@@ -21,13 +21,14 @@ const okIntel = {
   },
   facebook: { status: 'ok', query: 'site:facebook.com "ABC Ltd"', found: false, topResults: [] },
   panjiva: { status: 'ok', query: 'site:panjiva.com "ABC Ltd"', hasRecord: true, resultCount: 12, topResults: [] },
+  maps: { status: 'ok', query: '"ABC Ltd" US', hasRecord: true, resultCount: 1, places: [{ title: 'ABC Ltd HQ', address: '1 Main St, NYC', category: 'Office' }] },
   negative: { status: 'ok', query: '"ABC Ltd" (scam)', hitCount: 0, hits: [] },
   phone: { status: 'ok', query: '"+12345"', hitCount: 0, hits: [] },
   generalSearch: { status: 'ok', query: '"ABC Ltd"', topResults: [] },
 }
 
 describe('formatIntelAsBriefing', () => {
-  it('includes all 8 section headers in order', () => {
+  it('includes all section headers in order', () => {
     const md = formatIntelAsBriefing(okIntel)
     const positions = [
       '## 1. 发件方实体识别',
@@ -35,10 +36,11 @@ describe('formatIntelAsBriefing', () => {
       '## 3. LinkedIn',
       '## 4. Facebook',
       '## 5. Panjiva',
-      '## 6. 负面',
-      '## 7. 发件方电话',
-      '## 8. 通用搜索',
-      '## 9. 发件方建站时间',
+      '## 6. 实地核验',
+      '## 7. 负面',
+      '## 8. 发件方电话',
+      '## 9. 通用搜索',
+      '## 10. 发件方建站时间',
     ].map(h => md.indexOf(h))
     expect(positions.every(p => p >= 0)).toBe(true)
     for (let i = 1; i < positions.length; i++) {

@@ -94,3 +94,32 @@ describe('buildPhoneQuery', () => {
     expect(buildPhoneQuery({ phone: '123' })).toBeNull()
   })
 })
+
+import { buildMapsQuery } from '@/lib/intel/searches/maps'
+
+describe('buildMapsQuery', () => {
+  it('uses companyName + address when both present', () => {
+    expect(buildMapsQuery({ companyName: 'PROSTYLE', address: 'Kralja Petra 1, Belgrade' }))
+      .toBe('"PROSTYLE" Kralja Petra 1, Belgrade')
+  })
+  it('falls back to companyName + country when address missing', () => {
+    expect(buildMapsQuery({ companyName: 'PROSTYLE', country: 'Serbia' }))
+      .toBe('"PROSTYLE" Serbia')
+  })
+  it('prefers address over country when both present', () => {
+    expect(buildMapsQuery({ companyName: 'X', address: '1 Main St', country: 'US' }))
+      .toBe('"X" 1 Main St')
+  })
+  it('uses just quoted companyName when no location signal', () => {
+    expect(buildMapsQuery({ companyName: 'X' })).toBe('"X"')
+  })
+  it('returns null without companyName', () => {
+    expect(buildMapsQuery({ address: '1 Main St' })).toBeNull()
+    expect(buildMapsQuery({ country: 'US' })).toBeNull()
+    expect(buildMapsQuery({})).toBeNull()
+  })
+  it('trims whitespace', () => {
+    expect(buildMapsQuery({ companyName: '  PROSTYLE  ', address: '  Belgrade  ' }))
+      .toBe('"PROSTYLE" Belgrade')
+  })
+})
