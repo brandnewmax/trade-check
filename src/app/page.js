@@ -1,6 +1,19 @@
 'use client'
 import React, { useState, useEffect, useRef } from 'react'
 
+const INQUIRY_CHANNELS = [
+  '官网 · SEO 自然流量询盘',
+  '官网 · Google 搜索广告询盘',
+  '官网 · Facebook / Instagram / 内容类广告',
+  '直接邮件联系',
+  '外贸开发信回复',
+  'LinkedIn / 社交平台主动建联',
+  '第三方转介绍 / 老客户回头',
+  '展会现场名片 / 展后跟进询盘',
+  '阿里巴巴 / Made-in-China — 产品页询盘',
+  '阿里巴巴 / Made-in-China — RFQ 报价广场',
+]
+
 // ─── DESIGN TOKENS (Claude light theme) ──────────────────────────────────────
 
 function SearchIcon({ className = '', size = 16 }) {
@@ -859,6 +872,7 @@ function LoginPage({ onLogin }) {
 // ─── QUERY PAGE ───────────────────────────────────────────────────────────────
 function QueryPage({ user }) {
   const [url, setUrl] = useState('')
+  const [channel, setChannel] = useState('')
   const [inquiry, setInquiry] = useState('')
   const [images, setImages] = useState([])       // [{name, base64, preview}]
   const [result, setResult] = useState('')
@@ -898,6 +912,7 @@ function QueryPage({ user }) {
     // Per-field validation
     const errs = {}
     if (!url.trim()) errs.url = '请填写我方公司网址'
+    if (!channel) errs.channel = '请选择询盘渠道'
     if (!inquiry.trim() && images.length === 0) errs.inquiry = '请填写询盘信息或上传名片图片'
     if (Object.keys(errs).length > 0) { setFieldErrors(errs); return }
     setFieldErrors({})
@@ -923,6 +938,7 @@ function QueryPage({ user }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           url,
+          channel,
           inquiry,
           images: images.map(img => ({ base64: img.base64, type: img.type })),
           enableIntel,
@@ -1034,6 +1050,21 @@ function QueryPage({ user }) {
                   rows={2}
                   className="w-full px-3 py-2 text-body font-light border border-stripe-border rounded-stripe-sm resize-none focus:outline-none focus:border-stripe-purple focus:ring-2 focus:ring-stripe-purple/20 transition"
                 />
+              </FormItem>
+              <FormItem label="询盘渠道" hint="客户是通过哪个渠道找到您的,用于 AI 结合来源判断可信度" error={fieldErrors.channel}>
+                <select
+                  value={channel}
+                  onChange={(e) => {
+                    setChannel(e.target.value)
+                    if (e.target.value) setFieldErrors((p) => ({ ...p, channel: null }))
+                  }}
+                  className="w-full h-10 px-3 text-body font-light bg-white border border-stripe-border rounded-stripe-sm focus:outline-none focus:border-stripe-purple focus:ring-2 focus:ring-stripe-purple/20 transition"
+                >
+                  <option value="">— 请选择 —</option>
+                  {INQUIRY_CHANNELS.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
               </FormItem>
               <FormItem label="客户询盘内容" hint="收到的邮件、WhatsApp、微信聊天原文" error={fieldErrors.inquiry}>
                 <textarea

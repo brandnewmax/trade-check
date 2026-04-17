@@ -12,9 +12,12 @@ export async function POST(req) {
   try { body = await req.json() }
   catch { return Response.json({ error: '请求格式错误' }, { status: 400 }) }
 
-  const { url, inquiry, images = [], enableIntel = true } = body
+  const { url, channel, inquiry, images = [], enableIntel = true } = body
   if (!url?.trim() && !inquiry?.trim() && images.length === 0) {
     return Response.json({ error: '请填写信息或上传图片' }, { status: 400 })
+  }
+  if (!channel?.trim()) {
+    return Response.json({ error: '请选择询盘渠道' }, { status: 400 })
   }
 
   const [globalSettings, userSettings] = await Promise.all([
@@ -101,9 +104,14 @@ export async function POST(req) {
         userSiteBlock = `**我方公司网址:** ${url || '未提供'}\n\n`
       }
 
+      const channelBlock = channel?.trim()
+        ? `**询盘来源渠道:** ${channel.trim()}\n\n`
+        : ''
+
       const textPart =
         (briefing ? `${briefing}\n\n---\n\n` : '') +
         userSiteBlock +
+        channelBlock +
         `**客户询盘内容:**\n${inquiry || '未提供'}`
 
       let userContent
@@ -212,6 +220,7 @@ export async function POST(req) {
           saveQuery({
             userEmail: session.email,
             url: url?.trim() || '',
+            channel: channel?.trim() || null,
             inquiry: inquiry?.trim() || '',
             hasImages: images.length > 0,
             imageCount: images.length,
