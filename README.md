@@ -3,7 +3,10 @@
 外贸询盘背景调查 API 服务——给定询盘文本 + 卖家自画像，返回结构化风险评估（四维评分 + 风险等级）、发件方实体、以及 8 路 OSINT 情报（LinkedIn、Panjiva 海关记录、Wayback 建站时间等）。
 
 **生产地址**: https://snap-check-algo.vercel.app
-**主端点**: `POST /api/v1/analyze`（SSE 流式）
+
+**对外端点**:
+- `POST /api/v1/analyze` — 询盘分析（SSE 流式）
+- `POST /api/v1/profile` — 卖家官网 → 公司资料报告（SSE 流式，2026-04-18 新增）
 
 作为独立 API 服务部署，供 [SN 平台 (ai-sn)](https://github.com/tommyso24) 等上游产品调用。
 
@@ -32,7 +35,7 @@ export SNAPCHECK_SERVICE_API_KEY="<your-key>"
 bash scripts/smoke-test.sh
 ```
 
-覆盖 5 个测试点：健康检查、鉴权失败、空输入校验、离线模式端到端、联网模式端到端（含 60s 代理边缘穿越验证）。全绿时 exit 0，任意失败 exit 1，环境问题 exit 2。
+覆盖 7 个测试点：健康检查、鉴权失败、空输入校验、离线模式端到端（双维断言 inquiry+match）、联网模式端到端（含 60s 代理边缘穿越验证）、`/api/v1/profile` 端到端、`/api/v1/analyze` 新老字段向下兼容。全绿时 exit 0，任意失败 exit 1，环境问题 exit 2。
 
 ## 技术栈
 
