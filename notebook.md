@@ -1,5 +1,7 @@
 # trade-check · 开发进度笔记
 
+> 最近更新: 2026-04-18
+
 > 外贸背调工具——用户收到客户询盘后,上传名片/邮件截图+文本,系统自动拉取多源公开情报(LinkedIn / Facebook / Panjiva / Wayback / 负面舆情),由 AI 给出风险等级和具体建议。
 
 生产地址: https://web-production-3b8ff.up.railway.app/
@@ -17,8 +19,9 @@
 | 3. 发件方/我方角色反转 | [#3](https://github.com/brandnewmax/trade-check/pull/3) | ✅ 已合并 | 情报以发件方为调查目标;图片多模态抽取;fallback 链 |
 | 4. 后续热修复 | 直接推 main | ✅ 全部部署 | 见下文"增量修复"一节 |
 | 5. 历史页性能 + 卡片重设计 | 直接推 main | ✅ 全部部署 | pipeline 批处理 + 懒加载 + 4 维分数卡片 + 客户标识 |
+| 6. 询盘渠道 + Maps 实地核验 + 分数重命名 | 直接推 main | ✅ 全部部署 | 询盘渠道必填下拉 · 自定义 Stripe 风下拉 · Google Maps 作为第 9 路情报源 · 战略综合 → 老板雷达 |
 
-**测试状态**: 55/55 单元测试通过 · `npm run build` 干净
+**测试状态**: 61/61 单元测试通过 · `npm run build` 干净
 
 ---
 
@@ -27,7 +30,7 @@
 ### 后端管线(`/api/analyze` → `lib/intel/gatherIntel`)
 
 ```
-用户提交 { url(我方), inquiry, images, enableIntel }
+用户提交 { url(我方), channel(询盘渠道 · 必填), inquiry, images, enableIntel }
          ↓
 阶段 1 · 我方背景并行抓取
   ├─ fetchWebsite(我方url) → userSite
@@ -36,19 +39,20 @@
 阶段 2 · 发件方实体抽取(LLM)
   输入: 询盘文本 + 图片(多模态) + userSite 摘录(排除用)
   模型选择: images 非空 → mainModel(强,多模态);否则 → extractionModel(cheap/flash)
-  输出 JSON: { companyName, companyUrl, personName, personTitle, email, phone, country, products }
+  输出 JSON: { companyName, companyUrl, personName, personTitle, email, phone, country, address, products }
   fallback 链(当 LLM 漏网时):
     a. 我方域名排除(防 LLM 混淆)
     b. 正则扫描询盘 http/https/www
     c. 正则扫描询盘裸域名(lookbehind 防误匹配邮箱)
     d. 邮箱域名反推(免费邮箱黑名单过滤)
          ↓
-阶段 3 · 基于发件方实体并行搜索(8 路)
+阶段 3 · 基于发件方实体并行搜索(9 路)
   ├─ fetchWebsite(发件方URL)   → "发件方公司网站"卡
   ├─ waybackFirstSnapshot(URL)  → "建站时间"卡(放在最后)
   ├─ searchLinkedIn             → LinkedIn 卡
   ├─ searchFacebook             → Facebook 卡
   ├─ searchPanjiva              → 海关足迹卡
+  ├─ searchMaps                 → "实地核验(Google Maps)"卡(新增 · 第 9 路)
   ├─ searchNegative             → 负面搜索卡
   ├─ searchPhone                → 发件方电话卡(仅当抽到电话)
   └─ searchGeneral              → 通用搜索(不上面板,只进简报)
@@ -60,16 +64,18 @@
       我方公司网络足迹(Google 前 5 条)
     ---
     [实时情报简报(发件方)]
-      § 1. 发件方实体识别
+      § 1. 发件方实体识别(含 country / address)
       § 2. 发件方公司网站
       § 3. LinkedIn 核验
       § 4. Facebook 核验
       § 5. Panjiva 海关足迹
-      § 6. 负面/诈骗搜索
-      § 7. 发件方电话核验
-      § 8. 通用搜索
-      § 9. 发件方建站时间(常空,放最后)
+      § 6. 实地核验(Google Maps)
+      § 7. 负面/诈骗搜索
+      § 8. 发件方电话核验
+      § 9. 通用搜索
+      § 10. 发件方建站时间(常空,放最后)
     ---
+    **询盘来源渠道:** XXX(事实注入,不动 systemPrompt)
     客户询盘内容 + 图片
   systemPrompt: 强制引用简报各节,禁止引入简报外事实
 ```
@@ -90,7 +96,7 @@
 - `user:{email}` · 用户账号
 - `global_settings` · baseUrl / systemPrompt / fallbackSystemPrompt / serpApiKey / extractionModel / extractionPrompt
 - `user_settings:{email}` · apiKey / modelName
-- `query:{ts}:{rand}` · 单次分析记录,包含完整 `intel` JSON、`intelEnabled` 标记、`scoreInquiry/scoreCustomer/scoreMatch/scoreStrategy`(4 维分数)、`customerName/customerUrl/customerEmail/customerCountry`(客户身份)
+- `query:{ts}:{rand}` · 单次分析记录,包含完整 `intel` JSON(含 `intel.maps`)、`intelEnabled` 标记、`scoreInquiry/scoreCustomer/scoreMatch/scoreStrategy`(4 维分数;第 4 维 label 已改名老板雷达,字段名保留以兼容老记录)、`customerName/customerUrl/customerEmail/customerCountry`(客户身份)、`channel`(询盘来源渠道)
 - `queries:all` / `queries:user:{email}` · 历史列表
 - `serpapi:usage:{YYYY-MM}` · 月度 SerpAPI 调用计数器
 
@@ -107,14 +113,17 @@
 ### 关键组件(均在单一 `src/app/page.js` 文件中)
 - `Layout` · 240px 左侧栏 shell + 移动端 hamburger
 - `LoginPage` · Stripe 式左半深蓝 hero + 右半浅色表单
-- `QueryPage` · 两栏分裂(左 420px sticky 输入+情报面板,右 flex AI 报告)
-- `HistoryPage` · 左 380px 列表 + 右详情
+- `QueryPage` · 两栏分裂(左 420px sticky 输入+情报面板,右 flex AI 报告);输入区: 我方网址 / 询盘渠道下拉 / 询盘内容 / 名片图片
+- `HistoryPage` · 左 380px 列表 + 右详情;卡片显示 客户身份 + 4 维分数 + 渠道
 - `SettingsPage` · 三张分组卡 + 底部 sticky 保存条
-- `IntelPanel` · 7 卡 2 列网格(高价值优先,Wayback 在最后)
+- `IntelPanel` · **8 卡** 2 列网格(高价值优先,Wayback 在最后):发件方网站 / LinkedIn / Facebook / Panjiva / **实地核验(新)** / 负面 / 电话 / Wayback
 - `IntelCard` · 状态点 + 查询行 + 结果列表(带 snippet)
+- `Select` · **新增** · 自定义 Stripe 风下拉(替代原生 `<select>`);button + absolute listbox + Esc/点击外部关闭 + a11y role=listbox/option
+- `ChevronDownIcon` / `CheckIcon` · 配套 `Select` 组件
 - `MarkdownRenderer` · 原生 Markdown 解析 + Stripe token className
 - `AiDisclaimer` · 报告尾部的免责提醒
 - `ImageDropzone` · 拖拽/粘贴/点击上传 + 缩略图网格
+- `INQUIRY_CHANNELS` · 10 项渠道常量(官网 SEO / Google 广告 / FB-Ins 广告 / 直接邮件 / 开发信回复 / LinkedIn / 转介绍 / 展会 / 阿里-产品页 / 阿里-RFQ)
 
 ### Tailwind 设计 token(`tailwind.config.js`)
 ```js
@@ -143,7 +152,8 @@ borderRadius: stripe-sm(4) / stripe(6) / stripe-lg(8)
 
 | 源 | 用途 | 实现 | 计费 |
 |---|---|---|---|
-| **Serper.dev** | Google 搜索(LinkedIn/FB/Panjiva/负面/电话/通用/我方) | POST + `X-API-KEY` header | 按查询,最便宜 |
+| **Serper.dev** `/search` | Google 网页搜索(LinkedIn/FB/Panjiva/负面/电话/通用/我方) | POST + `X-API-KEY` header,响应 `json.organic` | 按查询,最便宜 |
+| **Serper.dev** `/maps` | Google Maps 实地核验(地址/门面/评分/类型) | 同 header,响应 `json.places`(title/address/rating/category/website/phoneNumber) | 同上,每次独立计费 |
 | **Wayback Machine** | 建站时间推断 | `archive.org/wayback/available` | 免费 |
 | **Upstream LLM**(主分析) | 最终风险报告 + 名片 OCR | OpenAI 兼容 `/chat/completions`,流式 + 多模态 | 用户自备 API key |
 | **Upstream LLM**(抽取) | 实体抽取 JSON | 同上,非流式 | 用户自备 |
@@ -297,6 +307,62 @@ fallback 链确实在救命,LLM 仍然经常在 JSON 模式下漏 URL,但正则 
 - 卡片标头改为「客户 · 国家」+ 客户公司名 + 客户域名/邮箱
 - 回填脚本 `scripts/backfill-history-fields.mjs` 对生产库 61 条记录跑了一次:29 条补上了客户信息,7 条补上了分数
 
+### ⑲ 询盘渠道字段(必填下拉 · 事实注入 LLM)
+**问题**: AI 无从知道这条询盘是从哪个渠道来的 —— 但不同渠道的可信度先验差异巨大(展会名片 > Alibaba RFQ 广场撒网);让 AI 自己根据渠道校准风险判断是有价值的信号。
+**修**:
+- `src/app/page.js` 在「我方网址」和「询盘内容」之间插入「询盘渠道」字段
+- 常量 `INQUIRY_CHANNELS`(10 项):官网·SEO / 官网·Google 广告 / 官网·FB·Ins 广告 / 直接邮件 / 开发信回复 / LinkedIn 建联 / 第三方转介绍 / 展会名片 / 阿里-产品页 / 阿里-RFQ
+- 第一版用原生 `<select>`,客户端 + 服务端双重必填校验
+- `analyze/route.js` 把 `**询盘来源渠道:** XXX` 作为事实一行注入到 userSiteBlock 之后、询盘文本之前。**不动 systemPrompt**(改默认 prompt 需要管理员清 Redis 才生效,不值)
+- `saveQuery` 存为顶级字段 `channel`
+- **未做**: systemPrompt 显式教 AI 解读渠道策略 —— 依赖 LLM 常识 calibrate,观察后再决定要不要加规则
+- commit `07daf06`
+
+### ⑳ 历史卡片显示询盘渠道
+**问题**: 渠道存了但历史页看不到。
+**修**: `channel` 加入 `LIST_FIELDS`;`HistoryCard` 底部新增一行 `渠道 · XXX`,小字 + truncate 防长字符串撑破卡片;标签样式对齐顶部「客户」(10px 紫色 uppercase + label 色正文)。老记录无 `channel` 自动不显示。commit `dd891cb`
+
+### ㉑ 战略综合 → 老板雷达
+**问题**: 管理员在生产 systemPrompt 里把 `综合战略分` 改名为 `老板雷达分`,但代码里的正则还在抽 `综合战略分`,新记录的 `scoreStrategy` 全是 null。
+**修**:
+- `analyze/route.js`: `pickScore('综合战略分')` → `pickScore('老板雷达分')`
+- `page.js`: ScoreChip label `战略综合` → `老板雷达`(颜色保留 stripe-lemon)
+- `backfill-history-fields.mjs`: 映射同步
+- **数据库字段名 `scoreStrategy` 不动** —— 29 条已回填的老记录继续可读。老记录的 `scoreStrategy` 值是旧 label 时代抽的,语义不完全对齐,但数值仍在 0-100 区间
+- commit `f3ad7d7`
+
+### ㉒ 自定义 Stripe 风下拉(替代原生 `<select>`)
+**问题**: 原生 `<select>` 打开后是操作系统默认样式(蓝高亮、字号跟 OS),和 Stripe 风格白底浅蓝的输入框严重冲突。
+**修**:
+- 新组件 `Select`(~85 行)+ 配套 `ChevronDownIcon` / `CheckIcon`
+- **关闭态**: h-10 白底 + 浅色 border + chevron;placeholder 灰,已选态 label 色
+- **打开态**: 紫色 border + 紫色 ring;chevron 旋转 180° 且变紫
+- **弹层**: `absolute z-20 top-full mt-1 max-h-64 overflow-y-auto shadow-stripe-elevated`
+- **选中项**: 紫色文字 font-medium + 浅紫底 + 尾部紫色 CheckIcon
+- **交互**: 点击外部 / Esc 关闭 + 选中后自动关闭
+- **a11y**: `role=listbox/option/combobox` + `aria-haspopup/expanded/selected`
+- 键盘上下键导航故意不做(用户未要求,遵守 Karpathy §2 Simplicity First)
+- 潜在问题: 左侧输入区是 `lg:sticky + lg:overflow-y-auto`,dropdown 用 absolute 定位;`max-h-64` 限制下目前不会裁剪,真被裁再换成 fixed + portal
+- commit `c92ffda`
+
+### ㉓ ★ Google Maps 实地核验(第 9 路情报源 · 物理真实性维度)
+**问题**: 现有 8 路情报里没有验"这家公司的物理地址是否真实存在"这个维度。诈骗 / 虚假地址 / 住宅冒充工厂 / PO Box 都漏。Panjiva / LinkedIn / 网站只能证明"商业存在",不能证明"实地存在"。
+**修**:
+- `lib/intel/serpapi.js` 加 `mapsSearch()`,打 Serper 的 `/maps` 端点(响应 `json.places` 而不是 `json.organic`),每个 place 返回 `title / address / phoneNumber / website / category / rating / ratingCount / latitude / longitude / cid`
+- `lib/intel/searches/maps.js` 新模块,`buildMapsQuery` 三级降级: `"公司名" + 地址` (首选) > `"公司名" + 国家` > 仅 `"公司名"`
+- 抽取 schema 新增 `address` 字段(`extract.js FIELDS` + `lib/kv.js DEFAULT_EXTRACTION_PROMPT` + `format.js` 实体识别节)
+- `gatherIntel` 的 Promise.all 加第 9 路,曝出 `intel.maps`
+- 简报 `format.js` 插入 `## 6. 实地核验(Google Maps)`,原 §6-§9 顺延为 §7-§10
+- `page.js IntelPanel` 在 Panjiva 和负面搜索之间插入「实地核验」卡,显示 title/address/category/rating
+- `search.md` 同步更新(Maps 端点说明 + §7 详解 + 完整示例从 7 → 8 次 Serper 调用)
+- 单测加 6 个 `buildMapsQuery` 用例(55 → 61)
+- **⚠️ 管理员必须清空 `/settings` 里的"抽取 Prompt" textarea 并保存**,才能让 Redis 回退到代码里带 `address` 字段的新默认。否则 maps 查询只能拿 country 兜底
+- commit `b491038`
+
+### ㉔ 渠道文案:去掉"Google 搜索广告"里的"搜索"
+**问题**: "官网 · Google 搜索广告询盘" 和紧邻的"官网 · SEO 自然流量询盘" 都有"搜索"字样,用户选项时易混淆("搜索广告" vs "SEO 搜索流量")。
+**修**: `INQUIRY_CHANNELS` 对应项改为 "官网 · Google 广告询盘"。老记录存的字符串是老文案,历史卡片仍显示老值;未做一次性回填。commit `7bd3a35`
+
 ---
 
 ## 核心文件地图
@@ -305,45 +371,52 @@ fallback 链确实在救命,LLM 仍然经常在 JSON 模式下漏 URL,但正则 
 src/app/
 ├── layout.js              (~15 行)  Geist 字体接入 + html/body wrapper
 ├── globals.css            (~10 行)  Tailwind 三指令
-├── page.js                (~1700 行,单文件 MVC)
-│   ├── 原子组件:Icon/Logo/Spinner/FormItem/PasswordInput/EmptyState/NavItem
-│   ├── 情报面板:IntelCard/IntelQueryLine/IntelResultItem/IntelPanel
-│   ├── 其他:ScoreBadge/AiDisclaimer/MarkdownRenderer(+renderInline)
+├── page.js                (~1800 行,单文件 MVC)
+│   ├── 常量:INQUIRY_CHANNELS(10 项渠道下拉选项)
+│   ├── 原子组件:Icon/Logo/Spinner/FormItem/PasswordInput/EmptyState/NavItem/ChevronDownIcon/CheckIcon
+│   ├── 表单控件:Select(自定义 Stripe 风下拉,替代原生 select)
+│   ├── 情报面板:IntelCard/IntelQueryLine/IntelResultItem/IntelPanel(8 卡)
+│   ├── 其他:ScoreBadge/ScoreChip/AiDisclaimer/MarkdownRenderer(+renderInline)
 │   ├── 页面:LoginPage/QueryPage/HistoryPage/SettingsPage/HistoryCard/SettingsCard
 │   ├── 容器:Layout/ImageDropzone
 │   └── App(根组件,负责 user/page/serpUsage state 和路由切换)
 └── api/
     ├── auth/route.js        登录
     ├── me/route.js          当前用户
-    ├── analyze/route.js     ★ 4 阶段 SSE 管线
+    ├── analyze/route.js     ★ 4 阶段 SSE 管线(含渠道校验 + 注入)
     ├── settings/route.js    全局 + 用户设置 CRUD
-    └── queries/route.js     历史记录查询
+    └── queries/
+        ├── route.js         历史列表(LIST_FIELDS 精简 payload)
+        └── [id]/route.js    单条详情(含完整 result/intel)
 
 lib/
 ├── auth.js                  JWT session
-├── kv.js                    Upstash Redis 封装 + 默认 prompts + 用量计数器
+├── kv.js                    Upstash Redis 封装 + 默认 prompts(含 address 字段)+ 用量计数器
 └── intel/
-    ├── index.js             ★ gatherIntel 编排器
+    ├── index.js             ★ gatherIntel 编排器(9 路并行)
     ├── fetchWebsite.js      抓取 + HTML 剥离 + 8s 超时
     ├── wayback.js           archive.org 快照查询
-    ├── extract.js           ★ 抽取 + parseExtractionJson + 4 层 fallback 链
-    ├── serpapi.js           Serper.dev 客户端(名字是历史遗留)
-    ├── format.js            → markdown 简报
+    ├── extract.js           ★ 抽取 + parseExtractionJson + 4 层 fallback 链 + OCR pre-pass
+    ├── serpapi.js           Serper.dev 客户端 · serpSearch(/search) + mapsSearch(/maps)
+    ├── format.js            → markdown 简报(10 节)
     └── searches/
         ├── linkedin.js      人名+公司名降级查询
         ├── facebook.js      公司名优先
         ├── panjiva.js       需公司名
+        ├── maps.js          实地核验(新) · 公司名+地址>公司名+国家>公司名
         ├── negative.js      公司/邮箱/人名 + fraud 关键词
-        ├── phone.js         电话号码查询(新增)
+        ├── phone.js         电话号码查询
         └── general.js       公司名通用搜索
 
 test/intel/
 ├── extract.test.js          32 tests · parseExtractionJson + derive* fallbacks
-├── format.test.js           4 tests · 节顺序 + 状态渲染
-└── searches.test.js         19 tests · 所有 buildQuery 纯函数
+├── format.test.js           4 tests · 节顺序(10 节)+ 状态渲染
+└── searches.test.js         25 tests · 所有 buildQuery 纯函数(+6 buildMapsQuery)
 
 scripts/
-└── backfill-history-fields.mjs  一次性回填脚本(分数 + 客户字段)
+└── backfill-history-fields.mjs  一次性回填脚本(分数 + 客户字段;label 已同步到老板雷达分)
+
+search.md                     搜索指令参考文档(所有 Serper 查询构建 + Maps 端点 + 完整示例)
 
 docs/superpowers/
 ├── specs/
@@ -362,37 +435,47 @@ DESIGN.md                     awesome-design-md 的 Stripe 参考(npx getdesign 
 ## 已知限制 / 未做的事
 
 1. **Wayback 对新站/小站覆盖率低** —— 已接受,放最后。未来可换 whois API 补充注册日期。
-2. **抽取模型对名片 OCR 会挑字段** —— Claude Sonnet / Gemini Pro 等强模型在 JSON 严格输出模式下,经常漏填"不 100% 确定"的字段(尤其 companyUrl),哪怕图里写得很清楚。靠 ⑭ 的 OCR 预处理 + 正则兜底 + 邮箱派生三层 fallback 解决。有更便宜的抽取模型时可以继续省钱。
-3. **无前端单元测试** —— Tailwind + JSX 不好覆盖,靠构建验证 + 手动 smoke test。55 个单元测试全在 `lib/intel/` 的纯函数上。
-4. **E2E 测试没做** —— PR #1 的 Task 5.2 标记 pending,实际靠生产环境的每次迭代验证。
-5. **`.env.local` 本地开发缺失** —— 没有本地开发环境,所有测试直接在 Railway 生产环境上进行(`railway logs` 远程看日志)。
-6. **历史记录里的老 intel** —— 结构变了以后,老记录的 intel JSON 字段可能对不齐。IntelPanel 的可选链(`intel.xxx?.status`)大部分防得住,但新字段(如 phone、userContext、meta.extractionStatus)在老记录里是 undefined。
-7. **Settings 页的 prompt 是否更新需要手动操作** —— 改默认 prompt 后要去管理员设置清空对应 textarea 再保存,才能让 kv 里的值走新默认。
-8. **OCR 预处理双倍 LLM 调用** —— 每次带图分析多 ~$0.01 成本,可接受但注意用量。
-9. **4 维分数依赖 LLM 输出格式** —— 正则从 markdown 匹配 `X / 100` 模式,如果 prompt 或模型变化导致格式不同,分数会为 null。老记录大部分没有分数(prompt 演化前)。
-10. **历史列表 TTFB 仍 ~1.2s** —— 已从 10.8s 降到 1.5s,剩余是 Upstash pipeline 网络往返,进一步优化需要 pre-aggregate 或 CDN 缓存。
+2. **Google Maps 对小贸易商/新公司/中国非一线工厂收录率低** —— 类似 Wayback,空结果不一定是负面信号。Prompt 已经包含此判断提示。
+3. **抽取模型对名片 OCR 会挑字段** —— Claude Sonnet / Gemini Pro 等强模型在 JSON 严格输出模式下,经常漏填"不 100% 确定"的字段(尤其 companyUrl),哪怕图里写得很清楚。靠 ⑭ 的 OCR 预处理 + 正则兜底 + 邮箱派生三层 fallback 解决。有更便宜的抽取模型时可以继续省钱。
+4. **无前端单元测试** —— Tailwind + JSX 不好覆盖,靠构建验证 + 手动 smoke test。61 个单元测试全在 `lib/intel/` 的纯函数上。
+5. **E2E 测试没做** —— PR #1 的 Task 5.2 标记 pending,实际靠生产环境的每次迭代验证。
+6. **`.env.local` 本地开发缺失** —— 没有本地开发环境,所有测试直接在 Railway 生产环境上进行(`railway logs` 远程看日志)。
+7. **历史记录里的老 intel** —— 结构变了以后,老记录的 intel JSON 字段可能对不齐。IntelPanel 的可选链(`intel.xxx?.status`)大部分防得住,但新字段(如 phone / maps / userContext / meta.extractionStatus)在老记录里是 undefined。
+8. **Settings 页的 prompt 更新需要手动操作** —— 改默认 prompt 后要去管理员设置清空对应 textarea 再保存,才能让 kv 里的值走新默认。⭐ **⑭ + ㉓ 都踩过这坑**: 加 address 字段后若不清 textarea,LLM 不抽地址,Maps 查询只能用 country 兜底。
+9. **OCR 预处理双倍 LLM 调用** —— 每次带图分析多 ~$0.01 成本,可接受但注意用量。
+10. **4 维分数依赖 LLM 输出格式** —— 正则从 markdown 匹配 `<label>X/100` 模式,label 是**精确匹配单字符串**(`老板雷达分`),没做 alternation 变体兜底。如果 LLM 输出 "老板雷达:68/100"(丢"分"字)会为 null。老记录(综合战略分时代)的 `scoreStrategy` 数值仍在但语义与新 label 不对齐。
+11. **渠道字符串是裸中文,不是 key** —— `INQUIRY_CHANNELS` 改文案(如㉔)时,老记录里存的还是老字符串,没做一次性回填,历史卡片会显示旧文案。考虑未来改成 `channel_key + channel_label` 两段式。
+12. **Select 组件的键盘上下键导航未实现** —— 只有 Esc / 点击外部关闭,选项只能鼠标点。等用户反馈再加。
+13. **Select 弹层可能被 sticky 容器裁剪** —— 左侧输入列是 `lg:sticky + lg:overflow-y-auto`,dropdown 用 `absolute + max-h-64`;目前 10 项 + 256px 上限下不会裁,小屏或未来选项翻倍时需要换 fixed + portal。
+14. **历史列表 TTFB 仍 ~1.2s** —— 已从 10.8s 降到 1.5s,剩余是 Upstash pipeline 网络往返,进一步优化需要 pre-aggregate 或 CDN 缓存。
+15. **没有外部对接 API** —— 生产只能通过登录后的 UI 查看结果。Webhook / 导出 REST API 均未实现,用户明确提过需求。
 
 ---
 
 ## 下一步待办(按优先级)
 
-- [ ] 考虑把"发件方电话"也作为负面搜索的 fallback 目标之一(现在 negative 只用 company/email/person)
-- [ ] 考虑公共邮箱(gmail 等)作为"中性偏负面"信号在 prompt 里显式点名
-- [ ] .env.local 模板 + 本地 dev 说明文档
-- [ ] 考虑把 `transcribeImages` 的结果也传给阶段 4 主分析 LLM,让它直接看到一份转录而不只依赖图片——进一步降低最终报告漏信息的风险
-- [ ] 历史记录页显示 `intel.meta.extractionStatus` 的状态徽章
-- [ ] Serper / LLM 调用的错误 metrics 聚合(用于预警)
-- [ ] 历史列表进一步提速:考虑 pre-aggregate 列表元数据到一个 Redis hash 或加 CDN 缓存
-- [ ] 4 维分数的 prompt 硬约束:在 systemPrompt 里加明确的分数输出格式要求,确保正则永远匹配
+- [ ] **外部对接 API**(用户 2026-04-17 提出):webhook 推送 `result` + scores + customer + intel,或独立 API key 的只读 REST。首推 webhook,加 HMAC 签名。
+- [ ] **分数 label alternation 兜底**(用户 2026-04-18 讨论):`pickScore` 改成接受 `[新 label, 旧 label, 常见变体]`,提升 prompt 演化的抗性。同步 backfill 脚本。
+- [ ] 渠道标签迁移:`INQUIRY_CHANNELS` 从"纯字符串"改成 `{ key, label }` 二元组,老记录回填脚本一并同步("Google 搜索广告询盘" → "Google 广告询盘" 等)。
+- [ ] systemPrompt 显式点名渠道含义:观察一段时间,如果 LLM 没 calibrate 出"RFQ 撒网 vs 展会高信任",在 prompt 里加解读规则。
+- [ ] Select 组件加键盘上下键 + Enter 选中 + type-to-search。
+- [ ] 考虑把"发件方电话"也作为负面搜索的 fallback 目标之一(现在 negative 只用 company/email/person)。
+- [ ] 考虑公共邮箱(gmail 等)作为"中性偏负面"信号在 prompt 里显式点名。
+- [ ] `.env.local` 模板 + 本地 dev 说明文档。
+- [ ] 考虑把 `transcribeImages` 的结果也传给阶段 4 主分析 LLM,让它直接看到一份转录而不只依赖图片。
+- [ ] 历史记录页显示 `intel.meta.extractionStatus` 的状态徽章。
+- [ ] Serper / LLM 调用的错误 metrics 聚合(用于预警)。
+- [ ] 历史列表进一步提速:pre-aggregate 列表元数据到一个 Redis hash 或加 CDN 缓存。
+- [ ] 4 维分数的 prompt 硬约束:在 systemPrompt 里加明确的分数输出格式要求。
 
 ---
 
 ## Git 主分支状态
 
-最新 commit: `7a50842 ui: rename score chip labels`
+最新 commit: `7bd3a35 ui(channel): drop redundant 搜索 from Google ads label`
 远程: `origin/main` 同步
 PR: 无开启中
-总计本轮:PR #1(29 commit)+ PR #2(22 commit)+ PR #3(9 commit)+ 21 次 hotfix 直推
+总计本轮:PR #1(29 commit)+ PR #2(22 commit)+ PR #3(9 commit)+ 27 次 hotfix 直推
 
 ### Hotfix 时间线
 ```
@@ -415,5 +498,12 @@ cbb1909 ui: update intel checkbox label to mention model upgrade
 89631d4 perf(history): drop result markdown from list payload too
 6e49b9c feat(history): show 4 dimension scores on history cards
 3e2456e feat(history): surface customer (发件方) identity on history cards
-7a50842 ui: rename score chip labels   ← 最新
+7a50842 ui: rename score chip labels to 询盘质量/客户实力/双方匹配/战略综合
+1155811 docs: update notebook with perf optimizations and history card redesign
+07daf06 feat(query): add required inquiry channel dropdown, inject into LLM context
+dd891cb feat(history): show inquiry channel on history cards
+f3ad7d7 ui: rename 战略综合 score to 老板雷达 to match updated prompt
+c92ffda ui(query): replace native <select> with Stripe-styled custom dropdown
+b491038 feat(intel): add Google Maps search for sender's physical-presence verification
+7bd3a35 ui(channel): drop redundant 搜索 from Google ads channel label   ← 最新
 ```
