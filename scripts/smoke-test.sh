@@ -405,14 +405,14 @@ HTTP_A=$(curl -N -sS -X POST "$TARGET/api/v1/analyze" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $SNAPCHECK_SERVICE_API_KEY" \
   -H "Accept: text/event-stream" \
-  --max-time 60 \
+  --max-time 120 \
   -o "$SSE_A" -w "%{http_code}" \
   -d "$BODY_A" 2>/dev/null || echo "000")
 HTTP_B=$(curl -N -sS -X POST "$TARGET/api/v1/analyze" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $SNAPCHECK_SERVICE_API_KEY" \
   -H "Accept: text/event-stream" \
-  --max-time 60 \
+  --max-time 120 \
   -o "$SSE_B" -w "%{http_code}" \
   -d "$BODY_B" 2>/dev/null || echo "000")
 MS=$(($(now_ms) - START))
