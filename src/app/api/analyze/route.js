@@ -183,6 +183,7 @@ export async function POST(req) {
           body: JSON.stringify({
             model: modelName,
             stream: true,
+            stream_options: { include_usage: true },
             messages: [
               ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
               { role: 'user', content: userContent },
@@ -211,6 +212,7 @@ export async function POST(req) {
       const reader = upstreamRes.body.getReader()
       let fullText = ''
       let buffer = ''
+      let llmUsage = null
 
       try {
         while (true) {
@@ -230,6 +232,9 @@ export async function POST(req) {
                 fullText += delta
                 enqueue({ type: 'delta', delta })
               }
+              // Token usage typically arrives in the final chunk when
+              // stream_options.include_usage is true. Keep the latest non-null.
+              if (parsed.usage) llmUsage = parsed.usage
             } catch {}
           }
         }
@@ -260,9 +265,14 @@ export async function POST(req) {
           const scoreInquiry = pickScore('询盘质量分')
           const scoreCustomer = pickScore('客户实力分')
           const scoreMatch = pickScore('匹配度(?:得)?分')
-          const scoreStrategy = pickScore('综合战略分')
+          const scoreStrategy = pickScore('(?:综合战略|策略执行|综合|战略)分')
 
-          enqueue({ type: 'done', result: fullText, riskLevel, intel })
+          const tokens = {
+            prompt: llmUsage?.prompt_tokens ?? null,
+            completion: llmUsage?.completion_tokens ?? null,
+          }
+
+          enqueue({ type: 'done', result: fullText, riskLevel, intel, tokens })
 
           const extracted = intel?.extracted || null
           saveQuery({
@@ -290,7 +300,7 @@ export async function POST(req) {
           obs.riskLevel = riskLevel
           obs.scores = { inquiry: scoreInquiry, customer: scoreCustomer, match: scoreMatch, strategy: scoreStrategy }
           obs.model = modelName
-          obs.tokens = { prompt: null, completion: null } // streaming LLM path — usage not captured
+          obs.tokens = tokens
           recordObs('success', null)
         } else {
           enqueue({ type: 'error', error: 'AI 返回空内容,请检查 Model Name 是否正确' })

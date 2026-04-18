@@ -298,7 +298,7 @@ export async function POST(req) {
           inquiry: pickScore('询盘质量分'),
           customer: pickScore('客户实力分'),
           match: pickScore('匹配度(?:得)?分'),
-          strategy: pickScore('综合战略分'),
+          strategy: pickScore('(?:综合战略|策略执行|综合|战略)分'),
         }
 
         const extracted = intel?.extracted || null
