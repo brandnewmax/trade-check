@@ -1,4 +1,26 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+
+vi.mock('@upstash/redis', () => {
+  const store = new Map()
+  const calls = []
+  return {
+    Redis: class {
+      constructor() {}
+      hset = vi.fn(async (key, data) => { calls.push(['hset', key, data]); store.set(key, { ...(store.get(key) || {}), ...data }); return 1 })
+      hget = vi.fn(async (key, field) => (store.get(key) || {})[field])
+      hgetall = vi.fn(async (key) => store.get(key) || null)
+      zadd = vi.fn(async (key, ...args) => { calls.push(['zadd', key, args]); return 1 })
+      zrange = vi.fn(async () => [])
+      rpush = vi.fn(async (key, val) => { calls.push(['rpush', key, val]); const arr = store.get(key) || []; arr.push(val); store.set(key, arr); return arr.length })
+      lrange = vi.fn(async (key) => store.get(key) || [])
+      expire = vi.fn(async () => 1)
+      del = vi.fn(async (key) => { store.delete(key); return 1 })
+    },
+    __store: store,
+    __calls: calls,
+    __reset: () => { store.clear(); calls.length = 0 },
+  }
+})
 
 describe('debug.js env helpers', () => {
   beforeEach(() => {
@@ -126,5 +148,55 @@ describe('key helpers', () => {
   it('indexKey produces debug:index:YYYYMMDD', async () => {
     const { indexKey } = await import('@/lib/debug?bust=key4')
     expect(indexKey('20260419')).toBe('debug:index:20260419')
+  })
+})
+
+describe('startTrace / endTrace', () => {
+  beforeEach(async () => {
+    process.env.DEBUG_TRACE_ENABLED = 'true'
+    const mod = await import('@upstash/redis')
+    mod.__reset?.()
+  })
+
+  it('startTrace writes meta hash and index zset', async () => {
+    const { startTrace } = await import('@/lib/debug?bust=start1')
+    const redisMod = await import('@upstash/redis')
+    await startTrace({
+      requestId: 'req-123',
+      route: 'v1/analyze',
+      startMs: 1745000000000,
+      meta: { scanMode: 'online', enableIntel: true, caller: 'sn' },
+    })
+    const calls = redisMod.__calls
+    expect(calls.some(c => c[0] === 'hset' && c[1].startsWith('debug:meta:'))).toBe(true)
+    expect(calls.some(c => c[0] === 'zadd' && c[1].startsWith('debug:index:'))).toBe(true)
+  })
+
+  it('startTrace is noop when DEBUG_TRACE_ENABLED=false', async () => {
+    process.env.DEBUG_TRACE_ENABLED = 'false'
+    const { startTrace } = await import('@/lib/debug?bust=start2')
+    const redisMod = await import('@upstash/redis')
+    redisMod.__reset()
+    await startTrace({ requestId: 'x', route: 'v1/analyze', startMs: 0, meta: {} })
+    expect(redisMod.__calls).toHaveLength(0)
+  })
+
+  it('endTrace updates meta with status/endMs/duration', async () => {
+    const { startTrace, endTrace } = await import('@/lib/debug?bust=end1')
+    const redisMod = await import('@upstash/redis')
+    redisMod.__reset()
+    await startTrace({ requestId: 'r2', route: 'analyze', startMs: 1000, meta: {} })
+    await endTrace({ requestId: 'r2', startMs: 1000, endMs: 3000, status: 'success', outcome: { riskLevel: 'high' } })
+    const hsets = redisMod.__calls.filter(c => c[0] === 'hset')
+    expect(hsets.length).toBeGreaterThanOrEqual(2)
+    const last = hsets[hsets.length - 1][2]
+    expect(last.status).toBe('success')
+    expect(last.endMs).toBe(3000)
+    expect(last.durationMs).toBe(2000)
+  })
+
+  it('endTrace never throws when Redis fails', async () => {
+    const { endTrace } = await import('@/lib/debug?bust=end2')
+    await expect(endTrace({ requestId: 'missing', startMs: 0, endMs: 1, status: 'error' })).resolves.not.toThrow()
   })
 })
