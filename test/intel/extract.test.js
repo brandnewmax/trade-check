@@ -3,6 +3,7 @@ import {
   parseExtractionJson,
   deriveCompanyUrlFromEmail,
   deriveCompanyUrlFromText,
+  cleanExtractedCompanyUrl,
 } from '@/lib/intel/extract'
 
 describe('parseExtractionJson', () => {
@@ -193,5 +194,113 @@ describe('deriveCompanyUrlFromText', () => {
     expect(deriveCompanyUrlFromText(
       'main: https://mycorp.com alt: other.com'
     )).toBe('https://mycorp.com')
+  })
+
+  // ── AI tool blocking (bug: ChatGPT/Claude URLs in screenshots leak through) ─
+
+  it('rejects chatgpt.com (strong)', () => {
+    expect(deriveCompanyUrlFromText('see https://chatgpt.com/c/abc123')).toBeNull()
+  })
+
+  it('rejects bare chatgpt.com', () => {
+    expect(deriveCompanyUrlFromText('I asked chatgpt.com to help draft this')).toBeNull()
+  })
+
+  it('rejects claude.ai', () => {
+    expect(deriveCompanyUrlFromText('drafted via https://claude.ai/chat/xyz')).toBeNull()
+  })
+
+  it('rejects openai.com (strong)', () => {
+    expect(deriveCompanyUrlFromText('powered by https://openai.com')).toBeNull()
+  })
+
+  it('rejects bare openai.com', () => {
+    expect(deriveCompanyUrlFromText('used openai.com tech for translation')).toBeNull()
+  })
+
+  it('rejects chat.openai.com via parent domain match', () => {
+    expect(deriveCompanyUrlFromText('see https://chat.openai.com/share/x')).toBeNull()
+  })
+
+  it('rejects copilot.microsoft.com but not microsoft.com itself', () => {
+    expect(deriveCompanyUrlFromText('I used https://copilot.microsoft.com/chat')).toBeNull()
+    // microsoft.com is NOT blacklisted (could be a real customer's adjacent vendor)
+    expect(deriveCompanyUrlFromText('see microsoft.com for info')).toBe('https://microsoft.com')
+  })
+
+  it('rejects mainstream Chinese AI tools', () => {
+    expect(deriveCompanyUrlFromText('用 doubao.com 翻译的')).toBeNull()
+    expect(deriveCompanyUrlFromText('via kimi.com analysis')).toBeNull()
+    expect(deriveCompanyUrlFromText('see https://deepseek.com/chat')).toBeNull()
+    expect(deriveCompanyUrlFromText('via https://moonshot.cn')).toBeNull()
+  })
+
+  it('still picks the real company URL after AI tool noise', () => {
+    expect(deriveCompanyUrlFromText(
+      'Drafted with chatgpt.com — our company is at https://realfactory.com'
+    )).toBe('https://realfactory.com')
+  })
+})
+
+describe('deriveCompanyUrlFromEmail - AI tool blocking', () => {
+  it('rejects @openai.com', () => {
+    expect(deriveCompanyUrlFromEmail('noreply@openai.com')).toBeNull()
+  })
+
+  it('rejects @anthropic.com', () => {
+    expect(deriveCompanyUrlFromEmail('hello@anthropic.com')).toBeNull()
+  })
+
+  it('rejects @chatgpt.com', () => {
+    expect(deriveCompanyUrlFromEmail('foo@chatgpt.com')).toBeNull()
+  })
+})
+
+describe('cleanExtractedCompanyUrl', () => {
+  it('returns the URL when it is a normal corporate URL', () => {
+    expect(cleanExtractedCompanyUrl('https://abctrading.com', 'konmison.com'))
+      .toBe('https://abctrading.com')
+  })
+
+  it('returns null when URL matches the user own domain', () => {
+    expect(cleanExtractedCompanyUrl('https://konmison.com/about', 'konmison.com'))
+      .toBeNull()
+  })
+
+  it('returns null when URL matches user own domain with www / protocol stripped', () => {
+    expect(cleanExtractedCompanyUrl('https://www.konmison.com', 'https://konmison.com'))
+      .toBeNull()
+  })
+
+  it('returns null when URL is an AI tool (chatgpt.com)', () => {
+    expect(cleanExtractedCompanyUrl('https://chatgpt.com/c/abc', null)).toBeNull()
+  })
+
+  it('returns null when URL is an AI tool (claude.ai)', () => {
+    expect(cleanExtractedCompanyUrl('https://claude.ai/chat/123', null)).toBeNull()
+  })
+
+  it('returns null when URL is an AI tool subdomain (chat.openai.com → parent match)', () => {
+    expect(cleanExtractedCompanyUrl('https://chat.openai.com/share/123', null)).toBeNull()
+  })
+
+  it('returns null for known social/marketplace domains', () => {
+    expect(cleanExtractedCompanyUrl('https://linkedin.com/in/foo', null)).toBeNull()
+    expect(cleanExtractedCompanyUrl('https://www.alibaba.com/xyz', null)).toBeNull()
+  })
+
+  it('returns null for Chinese AI tools (doubao, kimi, deepseek)', () => {
+    expect(cleanExtractedCompanyUrl('https://doubao.com/chat', null)).toBeNull()
+    expect(cleanExtractedCompanyUrl('https://kimi.com', null)).toBeNull()
+    expect(cleanExtractedCompanyUrl('https://deepseek.com', null)).toBeNull()
+  })
+
+  it('returns null for null / empty input', () => {
+    expect(cleanExtractedCompanyUrl(null, null)).toBeNull()
+    expect(cleanExtractedCompanyUrl('', 'konmison.com')).toBeNull()
+  })
+
+  it('returns the URL when userUrl is omitted and URL is acceptable', () => {
+    expect(cleanExtractedCompanyUrl('https://abctrading.com')).toBe('https://abctrading.com')
   })
 })
