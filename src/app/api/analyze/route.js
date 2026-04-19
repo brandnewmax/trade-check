@@ -5,14 +5,23 @@ import { getGlobalSettings, getUserSettings, saveQuery } from '@/lib/kv'
 import { gatherIntel, formatIntelAsBriefing } from '@/lib/intel'
 import { newRequestId, hashInquiry, writeObservationLog } from '@/lib/obs'
 import { normalizeRequest } from '@/lib/requestNormalizer'
+import { createLogger, previewText, runWithRequestContext } from '@/lib/logger'
+
+const log = createLogger('route/analyze')
 
 export async function POST(req) {
   const { session, error, status } = await requireSession()
-  if (error) return Response.json({ error }, { status })
+  if (error) {
+    log.warn('auth_fail', { status })
+    return Response.json({ error }, { status })
+  }
 
   let body
   try { body = await req.json() }
-  catch { return Response.json({ error: '请求格式错误' }, { status: 400 }) }
+  catch {
+    log.warn('body_parse_fail', { user: session.email })
+    return Response.json({ error: '请求格式错误' }, { status: 400 })
+  }
 
   // Web frontend historically omitted enable_intel (defaulting to true).
   // Preserve that by defaulting the normalized flag to true only here.
@@ -54,8 +63,24 @@ export async function POST(req) {
 
   const stream = new ReadableStream({
     async start(controller) {
+      return runWithRequestContext({ requestId, route: 'analyze' }, () => streamBody(controller))
+    },
+    cancel() {}
+  })
+
+  async function streamBody(controller) {
       let heartbeatTimer = null
       let currentStage = 'init'
+
+      log.start({
+        user: session.email,
+        scanMode: scan_mode,
+        enableIntel: !!enableIntel,
+        inquiryLen: (inquiry || '').length,
+        inputHash: inputHash.slice(0, 12),
+        imageCount: images.length,
+        hasUrl: !!url?.trim(),
+      })
 
       // Observation log state — mutated as the request progresses.
       // recordObs() is idempotent (fires once).
@@ -97,6 +122,7 @@ export async function POST(req) {
       let intel = null
       if (enableIntel) {
         currentStage = 'intel'
+        log.info('stage', { stage: 'intel', elapsedMs: Date.now() - streamStart })
         try {
           intel = await gatherIntel({
             url,
@@ -109,13 +135,17 @@ export async function POST(req) {
           })
           enqueue({ type: 'intelDone', intel })
         } catch (e) {
+          log.warn('intel_threw', { error: e.message || String(e) })
           enqueue({ type: 'intelError', error: e.message || String(e) })
           intel = null
         }
+      } else {
+        log.info('intel_disabled', { reason: 'enableIntel=false' })
       }
 
       // ── Stage 4: main LLM ────────────────────────────────────────────────
       currentStage = 'analysis'
+      log.info('stage', { stage: 'analysis', elapsedMs: Date.now() - streamStart })
       const useBriefing = !!intel
       const systemPrompt = useBriefing
         ? globalSettings.systemPrompt
@@ -171,6 +201,13 @@ export async function POST(req) {
       }
 
       const endpoint = baseUrl.replace(/\/$/, '') + '/chat/completions'
+      const tLlm = Date.now()
+      log.info('llm_call', {
+        model: modelName,
+        useBriefing,
+        hasImages: images.length > 0,
+        systemPromptLen: (systemPrompt || '').length,
+      })
 
       let upstreamRes
       try {
@@ -191,6 +228,7 @@ export async function POST(req) {
           }),
         })
       } catch (e) {
+        log.fail({ phase: 'llm_fetch', error: e.message || String(e), llmMs: Date.now() - tLlm })
         enqueue({ type: 'error', error: `无法连接到 API：${e.message}` })
         clearInterval(heartbeatTimer)
         try { controller.close() } catch {}
@@ -202,6 +240,12 @@ export async function POST(req) {
         let detail = ''
         try { detail = await upstreamRes.text() } catch {}
         try { detail = JSON.parse(detail)?.error?.message || detail } catch {}
+        log.fail({
+          phase: 'llm_http',
+          status: upstreamRes.status,
+          detail: previewText(String(detail), 300),
+          llmMs: Date.now() - tLlm,
+        })
         enqueue({ type: 'error', error: `API 错误 ${upstreamRes.status}：${String(detail).slice(0, 300)}` })
         clearInterval(heartbeatTimer)
         try { controller.close() } catch {}
@@ -239,6 +283,7 @@ export async function POST(req) {
           }
         }
       } catch (e) {
+        log.warn('stream_break', { error: e.message || String(e), fullTextLen: fullText.length })
         enqueue({ type: 'error', error: `流中断：${e.message}` })
       } finally {
         clearInterval(heartbeatTimer)
@@ -250,8 +295,10 @@ export async function POST(req) {
             : null
           const riskLevel = riskMatched || 'medium'
           if (!riskMatched) {
-            console.warn('[analyze] risk_level keyword miss, defaulting to medium', {
-              model: modelName, email: session.email,
+            log.warn('risk_keyword_miss', {
+              defaulted: 'medium',
+              model: modelName,
+              email: session.email,
             })
           }
 
@@ -301,16 +348,25 @@ export async function POST(req) {
           obs.scores = { inquiry: scoreInquiry, customer: scoreCustomer, match: scoreMatch, strategy: scoreStrategy }
           obs.model = modelName
           obs.tokens = tokens
+          log.ok({
+            riskLevel,
+            scores: obs.scores,
+            tokens,
+            intelEnabled: !!enableIntel,
+            skippedIntel: intel?.meta?.skipped?.length ?? null,
+            fullTextLen: fullText.length,
+            llmMs: Date.now() - tLlm,
+            totalMs: Date.now() - streamStart,
+          })
           recordObs('success', null)
         } else {
+          log.fail({ phase: 'llm_empty', llmMs: Date.now() - tLlm })
           enqueue({ type: 'error', error: 'AI 返回空内容,请检查 Model Name 是否正确' })
           recordObs('error', 'llm')
         }
         try { controller.close() } catch {}
       }
-    },
-    cancel() {}
-  })
+  }
 
   return new Response(stream, {
     headers: {
