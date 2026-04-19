@@ -4,6 +4,9 @@ import { getGlobalSettings, getUserSettings, saveQuery } from '@/lib/kv'
 import { gatherIntel, formatIntelAsBriefing } from '@/lib/intel'
 import { newRequestId, hashInquiry, writeObservationLog } from '@/lib/obs'
 import { normalizeRequest } from '@/lib/requestNormalizer'
+import { createLogger, previewText, runWithRequestContext } from '@/lib/logger'
+
+const log = createLogger('route/v1-analyze')
 
 // ─── SERVICE_API_KEY auth ───────────────────────────────────────────────────
 function authenticateService(req) {
@@ -22,15 +25,22 @@ export async function POST(req) {
   // Pre-stream checks: return plain JSON so auth/body errors don't get
   // swallowed inside an SSE frame. Anything past this point speaks SSE.
   const auth = authenticateService(req)
-  if (!auth.ok) return Response.json({ ok: false, error: auth.error }, { status: auth.status })
+  if (!auth.ok) {
+    log.warn('auth_fail', { status: auth.status, error: auth.error })
+    return Response.json({ ok: false, error: auth.error }, { status: auth.status })
+  }
 
   let body
   try { body = await req.json() }
-  catch { return Response.json({ ok: false, error: 'Invalid JSON body' }, { status: 400 }) }
+  catch {
+    log.warn('body_parse_fail')
+    return Response.json({ ok: false, error: 'Invalid JSON body' }, { status: 400 })
+  }
 
   const normalized = normalizeRequest(body)
   const { inquiry_text, company_profile, inquiry_images, enable_intel, scan_mode } = normalized
   if (!inquiry_text?.trim()) {
+    log.warn('empty_inquiry')
     return Response.json({ ok: false, error: 'inquiry is required' }, { status: 400 })
   }
 
@@ -47,9 +57,24 @@ export async function POST(req) {
 
   const stream = new ReadableStream({
     async start(controller) {
+      return runWithRequestContext({ requestId, route: 'v1/analyze' }, () => streamBody(controller))
+    },
+    cancel() { /* client disconnected */ },
+  })
+
+  async function streamBody(controller) {
       let heartbeatTimer = null
       let currentStage = 'queued'
       let closed = false
+
+      log.start({
+        scanMode: scan_mode,
+        enableIntel: enable_intel,
+        inquiryLen: inquiry_text.length,
+        inputHash: inputHash.slice(0, 12),
+        imageCount: inquiry_images.length,
+        caller: companyObj.name || (typeof company_profile === 'string' ? previewText(company_profile, 60) : null),
+      })
 
       // Observation log state — mutated as the request progresses.
       // recordObs() is idempotent (fires once).
@@ -90,6 +115,7 @@ export async function POST(req) {
 
       const progress = (stage) => {
         currentStage = stage
+        log.info('stage', { stage, elapsedMs: Date.now() - streamStart })
         emit('progress', { stage, elapsed_ms: Date.now() - streamStart })
       }
 
@@ -101,6 +127,7 @@ export async function POST(req) {
       }
 
       const fail = (code, message) => {
+        log.fail({ stage: currentStage, code, message: previewText(message, 300) })
         emit('error', { code, message })
         close()
         recordObs('error', code)
@@ -166,6 +193,7 @@ export async function POST(req) {
               onProgress: null,
             })
           } catch (e) {
+            log.warn('intel_threw', { error: e.message || String(e) })
             intel = null
           }
         }
@@ -237,6 +265,13 @@ export async function POST(req) {
         }
 
         const endpoint = baseUrl.replace(/\/$/, '') + '/chat/completions'
+        const tLlm = Date.now()
+        log.info('llm_call', {
+          model: modelName,
+          useBriefing,
+          hasImages: preparedImages.length > 0,
+          systemPromptLen: (systemPrompt || '').length,
+        })
 
         let llmRes
         try {
@@ -263,12 +298,25 @@ export async function POST(req) {
           let detail = ''
           try { detail = await llmRes.text() } catch {}
           try { detail = JSON.parse(detail)?.error?.message || detail } catch {}
+          log.fail({ phase: 'llm_http', status: llmRes.status, detail: previewText(String(detail), 300), llmMs: Date.now() - tLlm })
           return fail('llm', `LLM API error ${llmRes.status}: ${String(detail).slice(0, 300)}`)
         }
 
         const llmJson = await llmRes.json()
         const fullText = llmJson.choices?.[0]?.message?.content || ''
-        if (!fullText) return fail('llm', 'LLM returned empty content')
+        if (!fullText) {
+          log.fail({ phase: 'llm_empty', llmMs: Date.now() - tLlm })
+          return fail('llm', 'LLM returned empty content')
+        }
+        log.info('llm_ok', {
+          model: modelName,
+          fullTextLen: fullText.length,
+          tokens: {
+            prompt: llmJson.usage?.prompt_tokens || null,
+            completion: llmJson.usage?.completion_tokens || null,
+          },
+          llmMs: Date.now() - tLlm,
+        })
 
         // ── Post-processing ────────────────────────────────────────────────
         progress('post_process')
@@ -282,8 +330,10 @@ export async function POST(req) {
           : null
         const riskLevel = riskMatched || 'medium'
         if (!riskMatched) {
-          console.warn('[v1/analyze] risk_level keyword miss, defaulting to medium', {
-            model: modelName, caller: companyObj.name || 'external',
+          log.warn('risk_keyword_miss', {
+            defaulted: 'medium',
+            model: modelName,
+            caller: companyObj.name || 'external',
           })
         }
 
@@ -371,14 +421,21 @@ export async function POST(req) {
             elapsed_ms: Date.now() - streamStart,
           },
         })
+        log.ok({
+          riskLevel,
+          scores,
+          tokens,
+          intelEnabled: enableIntel,
+          skippedIntel: intel?.meta?.skipped?.length ?? null,
+          totalMs: Date.now() - streamStart,
+        })
         close()
         recordObs('success', null)
       } catch (e) {
+        log.fail({ phase: 'internal', error: String(e?.message || e).slice(0, 300) })
         fail('internal', String(e?.message || e).slice(0, 300))
       }
-    },
-    cancel() { /* client disconnected */ },
-  })
+  }
 
   return new Response(stream, {
     headers: {

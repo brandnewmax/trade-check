@@ -3,6 +3,9 @@ export const dynamic = 'force-dynamic'
 import { getGlobalSettings, getUserSettings } from '@/lib/kv'
 import { serpSearch } from '@/lib/intel/serpapi'
 import { newRequestId, hashUrl, writeObservationLog } from '@/lib/obs'
+import { createLogger, previewText, runWithRequestContext } from '@/lib/logger'
+
+const log = createLogger('route/v1-profile')
 
 // ─── SERVICE_API_KEY auth (same contract as /api/v1/analyze) ────────────────
 function authenticateService(req) {
@@ -59,7 +62,11 @@ function stripHtml(html) {
     .trim()
 }
 
+const fetchLog = createLogger('profile/directFetch')
+
 async function directFetchWebsite(url) {
+  const t0 = Date.now()
+  fetchLog.start({ url })
   try {
     const res = await fetch(url, {
       headers: {
@@ -71,11 +78,18 @@ async function directFetchWebsite(url) {
       redirect: 'follow',
     })
 
-    if (res.status === 404) return { ok: false, reason: 'fetch_not_found' }
+    if (res.status === 404) {
+      fetchLog.fail({ url, reason: 'fetch_not_found', status: 404, durationMs: Date.now() - t0 })
+      return { ok: false, reason: 'fetch_not_found' }
+    }
     if ([403, 429, 503].includes(res.status)) {
+      fetchLog.fail({ url, reason: 'blocked_status', status: res.status, durationMs: Date.now() - t0 })
       return { ok: false, reason: 'blocked_status' }
     }
-    if (!res.ok) return { ok: false, reason: 'fetch_not_found' }
+    if (!res.ok) {
+      fetchLog.fail({ url, reason: 'fetch_not_found', status: res.status, durationMs: Date.now() - t0 })
+      return { ok: false, reason: 'fetch_not_found' }
+    }
 
     const reader = res.body.getReader()
     const decoder = new TextDecoder('utf-8', { fatal: false })
@@ -91,38 +105,65 @@ async function directFetchWebsite(url) {
 
     // Cloudflare / anti-bot challenge markers
     if (/cf-chl|Just a moment\.{3}|cf-browser-verification/i.test(html)) {
+      fetchLog.fail({ url, reason: 'cloudflare_challenge', bytes: received, durationMs: Date.now() - t0 })
       return { ok: false, reason: 'cloudflare_challenge' }
     }
 
     const title = (html.match(/<title[^>]*>([^<]*)<\/title>/i) || [])[1]?.trim() || ''
     const body = stripHtml(html)
     if (body.length < MIN_CONTENT_CHARS) {
+      fetchLog.fail({ url, reason: 'too_short', bodyLen: body.length, bytes: received, durationMs: Date.now() - t0 })
       return { ok: false, reason: 'too_short' }
     }
     const head = title ? `${title}\n\n` : ''
-    return { ok: true, text: (head + body).slice(0, MAX_EXTRACT_CHARS) }
+    const text = (head + body).slice(0, MAX_EXTRACT_CHARS)
+    fetchLog.ok({
+      url,
+      title: previewText(title, 80),
+      bodyLen: body.length,
+      textLen: text.length,
+      bytes: received,
+      durationMs: Date.now() - t0,
+    })
+    return { ok: true, text }
   } catch (e) {
     const msg = String(e?.message || e)
-    if (/ENOTFOUND|getaddrinfo|ENETUNREACH/i.test(msg)) {
-      return { ok: false, reason: 'dns' }
-    }
-    if (/abort|timeout/i.test(msg)) return { ok: false, reason: 'timeout' }
-    return { ok: false, reason: msg.slice(0, 120) }
+    let reason
+    if (/ENOTFOUND|getaddrinfo|ENETUNREACH/i.test(msg)) reason = 'dns'
+    else if (/abort|timeout/i.test(msg)) reason = 'timeout'
+    else reason = msg.slice(0, 120)
+    fetchLog.fail({ url, reason, error: previewText(msg, 200), durationMs: Date.now() - t0 })
+    return { ok: false, reason }
   }
 }
 
 // ─── SerpAPI fallback ───────────────────────────────────────────────────────
+const serpFallbackLog = createLogger('profile/serpFallback')
+
 async function serpFallback(websiteUrl, apiKey) {
+  const t0 = Date.now()
   let host
   try { host = new URL(websiteUrl).hostname.replace(/^www\./, '') }
-  catch { return { ok: false } }
+  catch {
+    serpFallbackLog.fail({ reason: 'url_parse', url: websiteUrl })
+    return { ok: false }
+  }
+  serpFallbackLog.start({ host })
 
   const res = await serpSearch({
     query: `site:${host}`,
     apiKey,
     num: 10,
   })
-  if (!res.ok || !res.results?.length) return { ok: false, error: res.error }
+  if (!res.ok || !res.results?.length) {
+    serpFallbackLog.fail({
+      host,
+      reason: res.ok ? 'empty_results' : 'serp_error',
+      error: res.error || null,
+      durationMs: Date.now() - t0,
+    })
+    return { ok: false, error: res.error }
+  }
 
   const aggregated = res.results
     .map((r, i) => {
@@ -133,6 +174,12 @@ async function serpFallback(websiteUrl, apiKey) {
     })
     .join('\n')
 
+  serpFallbackLog.ok({
+    host,
+    resultCount: res.results.length,
+    aggregatedLen: aggregated.length,
+    durationMs: Date.now() - t0,
+  })
   return { ok: true, text: aggregated, resultCount: res.results.length }
 }
 
@@ -152,14 +199,21 @@ const PROFILE_SYSTEM_PROMPT = `你是一个专业的外贸公司资料分析师�
 // ─── Route handler ──────────────────────────────────────────────────────────
 export async function POST(req) {
   const auth = authenticateService(req)
-  if (!auth.ok) return Response.json({ ok: false, error: auth.error }, { status: auth.status })
+  if (!auth.ok) {
+    log.warn('auth_fail', { status: auth.status, error: auth.error })
+    return Response.json({ ok: false, error: auth.error }, { status: auth.status })
+  }
 
   let body
   try { body = await req.json() }
-  catch { return Response.json({ ok: false, error: 'Invalid JSON body' }, { status: 400 }) }
+  catch {
+    log.warn('body_parse_fail')
+    return Response.json({ ok: false, error: 'Invalid JSON body' }, { status: 400 })
+  }
 
   const { request_id, website_url, supplementary_info } = normalizeProfileRequest(body)
   if (!isValidHttpUrl(website_url)) {
+    log.warn('invalid_url', { urlPreview: previewText(website_url, 80) })
     return Response.json(
       { ok: false, error: 'invalid_url', message: 'website_url must be a valid http/https URL' },
       { status: 400 },
@@ -173,9 +227,22 @@ export async function POST(req) {
 
   const stream = new ReadableStream({
     async start(controller) {
+      return runWithRequestContext({ requestId, route: 'v1/profile' }, () => streamBody(controller))
+    },
+    cancel() { /* client disconnected */ },
+  })
+
+  async function streamBody(controller) {
       let heartbeatTimer = null
       let currentStage = 'queued'
       let closed = false
+
+      log.start({
+        websiteUrlHash: hashUrl(website_url).slice(0, 12),
+        host: (() => { try { return new URL(website_url).host } catch { return null } })(),
+        hasSupplementary: !!supplementary_info,
+        supplementaryLen: (supplementary_info || '').length,
+      })
 
       const obs = {
         source: null,
@@ -209,6 +276,7 @@ export async function POST(req) {
 
       const progress = (stage) => {
         currentStage = stage
+        log.info('stage', { stage, elapsedMs: Date.now() - streamStart })
         emit('progress', { stage, elapsed_ms: Date.now() - streamStart })
       }
 
@@ -220,6 +288,7 @@ export async function POST(req) {
       }
 
       const fail = (code, message) => {
+        log.fail({ stage: currentStage, code, message: previewText(message, 300) })
         emit('error', { code, message })
         close()
         recordObs('error', code)
@@ -241,7 +310,10 @@ export async function POST(req) {
 
         if (direct.ok) {
           extracted = direct.text
+          log.info('source_decided', { source: 'direct_fetch', textLen: extracted.length })
         } else {
+          log.fallback({ from: 'direct_fetch', reason: direct.reason })
+
           // ── Step 2: failure detected ──────────────────────────────────
           if (direct.reason === 'fetch_not_found') {
             return fail(
@@ -275,6 +347,7 @@ export async function POST(req) {
               'Aggregated content still under 200 chars after SerpAPI fallback',
             )
           }
+          log.info('source_decided', { source: 'serp_fallback', textLen: extracted.length })
         }
 
         obs.source = sourceTag
@@ -302,6 +375,13 @@ export async function POST(req) {
             : '')
 
         const endpoint = baseUrl.replace(/\/$/, '') + '/chat/completions'
+        const tLlm = Date.now()
+        log.info('llm_call', {
+          model: modelName,
+          source: sourceTag,
+          payloadLen: userPayload.length,
+        })
+
         let llmRes
         try {
           llmRes = await fetch(endpoint, {
@@ -333,6 +413,15 @@ export async function POST(req) {
         const llmJson = await llmRes.json()
         const report = llmJson.choices?.[0]?.message?.content || ''
         if (!report) return fail('llm_error', 'LLM returned empty content')
+        log.info('llm_ok', {
+          model: modelName,
+          reportLen: report.length,
+          tokens: {
+            prompt: llmJson.usage?.prompt_tokens || null,
+            completion: llmJson.usage?.completion_tokens || null,
+          },
+          llmMs: Date.now() - tLlm,
+        })
 
         const tokens = {
           prompt: llmJson.usage?.prompt_tokens || null,
@@ -351,14 +440,20 @@ export async function POST(req) {
             elapsed_ms: Date.now() - streamStart,
           },
         })
+        log.ok({
+          source: sourceTag,
+          websiteAccessible,
+          reportLen: report.length,
+          tokens,
+          totalMs: Date.now() - streamStart,
+        })
         close()
         recordObs('success', null)
       } catch (e) {
+        log.fail({ phase: 'internal', error: String(e?.message || e).slice(0, 300) })
         fail('internal', String(e?.message || e).slice(0, 300))
       }
-    },
-    cancel() { /* client disconnected */ },
-  })
+  }
 
   return new Response(stream, {
     headers: {
