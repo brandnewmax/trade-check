@@ -2,8 +2,8 @@
 
 **日期:** 2026-04-19
 **状态:** 设计待确认
-**影响范围:** `lib/logger.js`（扩展）、新增 `lib/debug.js`、`src/app/api/admin/trace/*`、`src/app/_components/DebugPage.js`（新增）、`src/app/page.js` 增加 1 个 NavItem + 1 个 page 分支、现有 route / intel 文件加若干纯新增 log 调用
-**对业务逻辑的改动:** 零。现有任何业务语句、分支、返回值一律不改动，只在函数体空隙处 append 新的 `log.xxx()` 调用。`src/app/page.js` 只是在左侧菜单和页面路由分支里加条目，和现有 NavItem / 页面分支同款写法。
+**影响范围:** `lib/logger.js`（扩展）、新增 `lib/debug.js`、新增 API `src/app/api/admin/trace/*`、新增 Next.js 路由 `src/app/admin/traces/*`（独立 chrome，仅复用 Tailwind 设计 token）、`src/app/page.js` 增加 1 个 admin-only Debug NavItem（点击 `router.push('/admin/traces')`）、现有 route / intel 文件加若干纯新增 log 调用
+**对业务逻辑的改动:** 零。现有任何业务语句、分支、返回值一律不改动，只在函数体空隙处 append 新的 `log.xxx()` 调用。`src/app/page.js` 只是追加一条 NavItem，现有 3 条 NavItem 和整个 Layout 字节级不改。Debug 页面有自己独立的调试优化 chrome，不共用 Layout / NavItem / Logo，仅复用 `tailwind.config.js` 的设计 token（颜色、字号、圆角）。
 
 ---
 
@@ -48,11 +48,15 @@
 - 扩展 `lib/logger.js`：增加一个 sink 钩子，`createLogger` 每次调用除 stdout 之外额外把事件交给 `debug.js`（受 ENV 开关控制）
 - 在三个 route 文件（`/api/analyze`、`/api/v1/analyze`、`/api/v1/profile`）和若干 intel 节点文件的函数体**空隙**处，**纯新增** log 调用以捕获原文（例如 `log.info('raw_inputs', {...})`、`log.info('llm_request', {...})`、`log.info('llm_response', {...})`）。**不删不改任何现有代码**
 - 新增 `/api/admin/trace`（列表）和 `/api/admin/trace/:requestId`（详情）JSON API，admin-only
-- UI 集成到**现有主应用** `src/app/page.js`：
-  - 左侧菜单新增 `Debug` NavItem（admin-only，和现有「分析 / 历史 / 设置」同款样式）
-  - 新增 `page === 'debug'` 分支，渲染 `<DebugPage user={user} />`
-  - 新建 `src/app/_components/DebugPage.js` 包含列表 + 详情双视图（靠内部 state `selectedRequestId` 切换，不新增 URL 路由）
-  - 支持 URL query param `?page=debug&trace=<requestId>` 用于深链分享
+- 新增真实 Next.js 路由：
+  - `/admin/traces` —— 列表页
+  - `/admin/traces/[requestId]` —— 详情页
+  - `src/app/admin/layout.js` —— admin 鉴权拦截 + debug 风格的顶栏
+- 主应用 `src/app/page.js` 侧边栏追加一条 admin-only 的 `Debug` NavItem（和「分析 / 历史 / 设置」视觉一致），点击 `router.push('/admin/traces')`。除此之外 `page.js` 其他内容一字不改
+- Debug 页面**独立 chrome，为调试优化交互**（不共用主应用 Layout / NavItem / Logo）：
+  - 顶栏：Logo 小图标 + "Debug Trace" 标题 + "← 返回主页"链接 + 用户邮箱 + 登出
+  - 主区满宽，不占左侧栏空间，给密集列表和长 timeline 留出版面
+  - 视觉调性统一靠复用 Tailwind 设计 token：`text-stripe-navy` / `border-stripe-border` / `rounded-stripe-sm` / `text-stripe-purple` / `bg-stripe-purpleLight` 等
 - 环境变量开关：`DEBUG_TRACE_ENABLED`、`DEBUG_TRACE_TTL_DAYS`、`DEBUG_TRACE_MAX_PAYLOAD_KB`、`DEBUG_TRACE_MAX_IMAGE_KB`
 - 单元测试 + 鉴权测试
 
@@ -257,56 +261,71 @@ if (isTraceEnabled()) {
 - `GET /api/admin/trace/:requestId?date=YYYYMMDD`（date 可选，不填自动扫当天和昨天）
 - 返回：`{ ok, data: { meta, events } }`
 
-### 6.5 Admin UI（集成到现有主应用）
+### 6.5 Admin UI（独立路由 + debug 风格 chrome）
 
-**改动点 1：`src/app/page.js`**（纯加，不删不改）
+**改动点 1：`src/app/page.js`**（纯追加，不删不改）
 
-- `pageTitles` 字典新增一项：`debug: 'Debug'`
-- 左侧 `<nav>` 内、「设置」下方新增一个 admin-only NavItem：
-  ```jsx
-  {isAdmin && (
-    <NavItem
-      icon={<DebugIcon />}
-      label="Debug"
-      active={page === 'debug'}
-      onClick={() => { setPage('debug'); setMobileOpen(false) }}
-      adminBadge
-    />
-  )}
-  ```
-- `App` 根组件页面分发逻辑新增一支：
-  ```jsx
-  const content =
-      page === 'debug'    ? <DebugPage user={user} />
-    : page === 'history'  ? <HistoryPage user={user} />
-    : page === 'settings' ? <SettingsPage user={user} />
-    :                       <QueryPage user={user} />
-  ```
-- 新增一个极简 `DebugIcon` SVG 组件（和现有 `SearchIcon` / `ClockIcon` / `GearIcon` 同款风格）
-- 挂载时读 URL query：若有 `?page=debug&trace=xxx` 则同步 `page` 与 `DebugPage` 内部的 `selectedRequestId`，方便深链分享
+左侧 `<nav>` 现有 3 条 NavItem 之后，新增一条 admin-only：
 
-**改动点 2：`src/app/_components/DebugPage.js`**（新建）
+```jsx
+{isAdmin && (
+  <NavItem
+    icon={<DebugIcon />}
+    label="Debug"
+    active={false}  // 在主应用内永远 false，真实 active 状态在 /admin/traces 里自己控制
+    onClick={() => {
+      router.push('/admin/traces')
+      setMobileOpen(false)
+    }}
+    adminBadge
+  />
+)}
+```
 
-单文件组件，内部靠 state 切换两种视图：
+`DebugIcon` 内联在 page.js 同文件（和 `SearchIcon` / `ClockIcon` / `GearIcon` 放一起，保持风格）。`router` 从 `next/navigation` 的 `useRouter` 拿。现有 `page` state、`pageTitles` 字典、`App` 根组件分发逻辑一字不改。
 
-**列表视图**（默认，`selectedRequestId == null`）
-- 顶部筛选条：日期选择器（默认今天 UTC）、status 下拉（all/success/error/running）、route 下拉（all/v1/analyze/v1/profile/analyze）、requestId 搜索框
-- 表格列：开始时间 | requestId（短 8 位，点击进详情） | route | status（彩色徽章） | 时长 | riskLevel | caller | 询盘预览（80 字）
+**改动点 2：`src/app/admin/layout.js`**（新建）
+
+- 鉴权拦截：调 `/api/me` 拉当前用户，不是 admin 直接 `redirect('/')`
+- 套一层 debug 风格的顶栏：
+  - 左：Logo 小图标（复用 page.js 里 Logo 的视觉元素，但独立实现一个小号版本）+ "Debug Trace" 标题
+  - 右：当前用户邮箱 + "← 返回主页" 链接（`router.push('/')`）+ 登出按钮
+- 主区满宽 `flex-1 overflow-y-auto` 容器留给 children
+
+**改动点 3：`src/app/admin/traces/page.js`**（新建 —— 列表页）
+
+Debug 优化的密集表格，不追求和主应用视觉一致、追求信息密度和操作效率：
+
+- 顶部筛选条（sticky 固定）：日期选择器（默认今天 UTC）| status 下拉（all/success/error/running）| route 下拉 | requestId 搜索 | 刷新按钮
+- 表格列（按密集排版）：开始时间 HH:mm:ss | requestId（短 8 位，等宽字体） | route | status（彩色徽章） | 时长 ms | riskLevel | caller | 询盘预览 80 字
+- 行可点击跳 `/admin/traces/[requestId]`
 - cursor-based 分页「加载更多」按钮
+- 空列表显示"该日期无 trace"提示
 - 对应 API：`GET /api/admin/trace?date=...&status=...&route=...&limit=50&cursor=...`
 
-**详情视图**（点行后，`selectedRequestId != null`）
-- 顶部：返回列表按钮 + meta 卡片（requestId、时间、时长、status、riskLevel、scores、model、tokens）
-- 左栏：输入区 —— inquiry_text 全文、company_profile 全文、images 缩略图（≤256 KB 直显 base64，>256 KB 显哈希占位 + 下载链接）
-- 中栏：**节点时间线** —— 按 seq 排序，每个节点一张卡：
-  - 顶部：tag（左）| event（中）| 耗时（右）| 状态色（绿/黄/红）
-  - 展开：payload JSON pretty-print（用原生 `<pre>` 或轻量语法高亮）
-  - 同一 tag 连续事件自动折叠成一组（例如 `intel/extract` 的 `start → ocr_start → ocr_ok → ocr_full → llm_call → extract_llm_request → extract_llm_response → llm_ok → fallback_input → fallback → ok` 全部归到一张主卡下），主卡显示总耗时，点开展开所有子事件
-  - 悬挂请求（只有 start 没有 ok/fail）顶部徽章显示 `running` 黄色，提示"请求可能中途崩溃或正在执行"
-- 右栏：最终 LLM 报告全文（从 `llm_response` 的 payload 里抓）
-- 对应 API：`GET /api/admin/trace/:requestId`
+**改动点 4：`src/app/admin/traces/[requestId]/page.js`**（新建 —— 详情页）
 
-**样式**：沿用现有 Stripe-like 设计 token（`text-stripe-navy` / `border-stripe-border` / `rounded-stripe-sm` 等），和 SettingsPage / HistoryPage 视觉一致。
+三栏布局（大屏 lg+）或纵向堆叠（小屏）：
+
+- 顶部面包屑：`← 返回列表` + `requestId` + meta 摘要（开始时间 / 时长 / status 徽章 / riskLevel / model / tokens）
+- 左栏：**输入区**
+  - `inquiry_text` 原文（可复制）
+  - `company_profile` 原文（markdown 模式显原始文本，无渲染，方便调试看到原样）
+  - images 缩略图网格（≤ 256 KB base64 直接渲染 `<img>`；> 256 KB 显示"图片已截断"占位 + sha256 哈希 + type / size）
+- 中栏：**节点时间线**（最宽，主观看区）
+  - 按 seq 排序，每个节点一张卡：
+    - 顶部：tag（左）| event（中）| 耗时（右）| 状态色（绿/黄/红）
+    - 展开：payload JSON 用 `<pre>` 等宽字体 + 轻量语法高亮（或直接 `JSON.stringify(..., 2)` 不做高亮）
+    - 同一 tag 连续事件自动折叠成一组（例如 `intel/extract` 的 `start → ocr_start → ocr_ok → ocr_full → llm_call → extract_llm_request → extract_llm_response → llm_ok → fallback_input → fallback → ok` 归到一张主卡下），主卡显示总耗时和节点数，点开展开所有子事件
+    - 悬挂请求（只有 start 没有 ok/fail）顶部徽章显示 `running` 黄色，提示"请求可能中途崩溃或正在执行"
+  - 工具栏：「全部展开 / 全部折叠」双按钮；支持 Ctrl/Cmd+F 浏览器原生搜索（payload 已渲染成文本）
+- 右栏：**最终 LLM 报告全文**（从 `llm_response` 事件的 payload 里抓 `content` 字段）
+  - 长内容可滚动，配"复制到剪贴板"按钮
+- 对应 API：`GET /api/admin/trace/:requestId?date=YYYYMMDD`
+
+**样式约束**：
+- 颜色 / 字号 / 圆角 / 间距 **必须**走 `tailwind.config.js` 的 stripe-* token（`text-stripe-navy` / `border-stripe-border` / `rounded-stripe-sm` / `text-stripe-purple` 等），确保和主应用调性协调
+- 其余 UI / 交互按 debug 需求自由设计（密集表格、折叠组、宽时间线都是主应用里没有的）
 
 ### 6.6 环境变量
 
@@ -405,8 +424,9 @@ if (isTraceEnabled()) {
 - route handler 业务流程：**零改动**（只在函数体空隙 append 纯新增 log 调用）
 - intel pipeline 节点逻辑：**零改动**（同上）
 - 前端现有页面（QueryPage / HistoryPage / SettingsPage / LoginPage）内部逻辑：**零改动**
-- `src/app/page.js` 的 Layout / App 根组件：**仅追加**（admin-only 的 NavItem、pageTitles 多一项、App 的 page 分发多一支），现有 3 个 NavItem 和 3 个已有页面分支一字不改
+- `src/app/page.js` 的 Layout / App 根组件：**仅追加一条 admin-only Debug NavItem + 一个 `useRouter()` 调用**；现有 3 个 NavItem、`page` state、`pageTitles`、App 分发逻辑一字不改
 - API 契约：**零改动**（只新增 `/api/admin/trace/*`，不动现有任何路由）
+- Tailwind / 全局样式：**零改动**（Debug 页面完全复用现有 stripe-* 设计 token）
 - 数据库 schema：**零改动**（只是在 Redis 里多一个 `debug:` 前缀的键空间）
 - CI / 部署：**零改动**
 
