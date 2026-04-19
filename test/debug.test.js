@@ -3,22 +3,25 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 vi.mock('@upstash/redis', () => {
   const store = new Map()
   const calls = []
+  let failOn = null
+  const maybeFail = (name) => { if (failOn === name || failOn === '*') throw new Error(`simulated ${name} failure`) }
   return {
     Redis: class {
       constructor() {}
-      hset = vi.fn(async (key, data) => { calls.push(['hset', key, data]); store.set(key, { ...(store.get(key) || {}), ...data }); return 1 })
-      hget = vi.fn(async (key, field) => (store.get(key) || {})[field])
-      hgetall = vi.fn(async (key) => store.get(key) || null)
-      zadd = vi.fn(async (key, ...args) => { calls.push(['zadd', key, args]); return 1 })
-      zrange = vi.fn(async () => [])
-      rpush = vi.fn(async (key, val) => { calls.push(['rpush', key, val]); const arr = store.get(key) || []; arr.push(val); store.set(key, arr); return arr.length })
-      lrange = vi.fn(async (key) => store.get(key) || [])
-      expire = vi.fn(async () => 1)
-      del = vi.fn(async (key) => { store.delete(key); return 1 })
+      hset = vi.fn(async (key, data) => { maybeFail('hset'); calls.push(['hset', key, data]); store.set(key, { ...(store.get(key) || {}), ...data }); return 1 })
+      hget = vi.fn(async (key, field) => { maybeFail('hget'); return (store.get(key) || {})[field] })
+      hgetall = vi.fn(async (key) => { maybeFail('hgetall'); return store.get(key) || null })
+      zadd = vi.fn(async (key, ...args) => { maybeFail('zadd'); calls.push(['zadd', key, args]); return 1 })
+      zrange = vi.fn(async () => { maybeFail('zrange'); return [] })
+      rpush = vi.fn(async (key, val) => { maybeFail('rpush'); calls.push(['rpush', key, val]); const arr = store.get(key) || []; arr.push(val); store.set(key, arr); return arr.length })
+      lrange = vi.fn(async (key) => { maybeFail('lrange'); return store.get(key) || [] })
+      expire = vi.fn(async () => { maybeFail('expire'); return 1 })
+      del = vi.fn(async (key) => { maybeFail('del'); store.delete(key); return 1 })
     },
     __store: store,
     __calls: calls,
-    __reset: () => { store.clear(); calls.length = 0 },
+    __reset: () => { store.clear(); calls.length = 0; failOn = null },
+    __failOn: (name) => { failOn = name },
   }
 })
 
@@ -198,5 +201,14 @@ describe('startTrace / endTrace', () => {
   it('endTrace never throws when Redis fails', async () => {
     const { endTrace } = await import('@/lib/debug?bust=end2')
     await expect(endTrace({ requestId: 'missing', startMs: 0, endMs: 1, status: 'error' })).resolves.not.toThrow()
+  })
+
+  it('safeAsync swallows Redis errors without throwing', async () => {
+    const { startTrace, endTrace } = await import('@/lib/debug?bust=err1')
+    const redisMod = await import('@upstash/redis')
+    redisMod.__failOn('hset')
+    await expect(startTrace({ requestId: 'failcase', route: 'v1/analyze', startMs: 1000, meta: {} })).resolves.not.toThrow()
+    await expect(endTrace({ requestId: 'failcase', startMs: 1000, endMs: 2000, status: 'error' })).resolves.not.toThrow()
+    redisMod.__failOn(null)
   })
 })
