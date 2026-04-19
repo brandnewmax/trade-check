@@ -1,5 +1,6 @@
 'use client'
 import React, { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 
 // ─── DESIGN TOKENS (Claude light theme) ──────────────────────────────────────
 
@@ -31,6 +32,15 @@ function GearIcon({ className = '', size = 16 }) {
         strokeWidth="1.6"
         strokeLinejoin="round"
       />
+    </svg>
+  )
+}
+
+function DebugIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 2v4m0 12v4M2 12h4m12 0h4M5 5l3 3m8 8l3 3M5 19l3-3m8-8l3-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="2" />
     </svg>
   )
 }
@@ -1636,6 +1646,7 @@ function SettingsPage({ user }) {
 // ─── LAYOUT ───────────────────────────────────────────────────────────────────
 function Layout({ user, onLogout, page, setPage, serpUsage, children }) {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const router = useRouter()
   const pageTitles = { query: '分析', history: '历史', settings: '设置' }
   const isAdmin = user?.role === 'admin'
 
@@ -1705,6 +1716,18 @@ function Layout({ user, onLogout, page, setPage, serpUsage, children }) {
               setMobileOpen(false)
             }}
           />
+          {isAdmin && (
+            <NavItem
+              icon={<DebugIcon />}
+              label="Debug"
+              active={false}
+              onClick={() => {
+                router.push('/admin/traces')
+                setMobileOpen(false)
+              }}
+              adminBadge
+            />
+          )}
         </nav>
 
         {isAdmin && serpUsage && (
