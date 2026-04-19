@@ -1,6 +1,6 @@
 # trade-check · 开发进度笔记
 
-> 最近更新: 2026-04-18
+> 最近更新: 2026-04-19
 
 > 外贸背调工具——用户收到客户询盘后,上传名片/邮件截图+文本,系统自动拉取多源公开情报(LinkedIn / Facebook / Panjiva / Wayback / 负面舆情),由 AI 给出风险等级和具体建议。
 
@@ -20,8 +20,9 @@
 | 4. 后续热修复 | 直接推 main | ✅ 全部部署 | 见下文"增量修复"一节 |
 | 5. 历史页性能 + 卡片重设计 | 直接推 main | ✅ 全部部署 | pipeline 批处理 + 懒加载 + 4 维分数卡片 + 客户标识 |
 | 6. 询盘渠道 + Maps 实地核验 + 分数重命名 | 直接推 main | ✅ 全部部署 | 询盘渠道必填下拉 · 自定义 Stripe 风下拉 · Google Maps 作为第 9 路情报源 · 战略综合 → 老板雷达 |
+| 7. AI 工具站黑名单 | 直接推 main | ✅ 已部署 | chatgpt.com / claude.ai / 国产大模型 等 21 个 AI 工具站不再被误识别为发件方网址 |
 
-**测试状态**: 61/61 单元测试通过 · `npm run build` 干净
+**测试状态**: 83/83 单元测试通过 · `npm run build` 干净
 
 ---
 
@@ -363,6 +364,36 @@ fallback 链确实在救命,LLM 仍然经常在 JSON 模式下漏 URL,但正则 
 **问题**: "官网 · Google 搜索广告询盘" 和紧邻的"官网 · SEO 自然流量询盘" 都有"搜索"字样,用户选项时易混淆("搜索广告" vs "SEO 搜索流量")。
 **修**: `INQUIRY_CHANNELS` 对应项改为 "官网 · Google 广告询盘"。老记录存的字符串是老文案,历史卡片仍显示老值;未做一次性回填。commit `7bd3a35`
 
+### ㉕ ★ AI 工具站黑名单(chatgpt.com / claude.ai / 国产大模型 等)
+**问题**: 用户上传询盘截图时,如果发件方用 ChatGPT/Claude/Doubao 等 AI 起草询盘,截图常包含浏览器 chrome(地址栏 `chatgpt.com`)、对话底部的 share 链接、或"Sent from ChatGPT"页脚。OCR pre-pass(⑭)忠实地把这些 URL 转录出来,抽取流水线随后把它们当作发件方公司网址使用,导致:
+- LinkedIn / Panjiva / Maps 全去搜 chatgpt.com,情报全废
+- 历史卡片里"客户网址"显示 https://chatgpt.com,荒谬
+- 主分析 LLM 看到一堆指向 OpenAI/Anthropic 的"客户情报",判断完全失准
+
+**Root cause**(systematic-debugging Phase 1):`companyUrl` 有 3 条进入路径,**每条都缺少对 AI 工具站的过滤**:
+
+| 路径 | 现有过滤 | 是否能挡 chatgpt.com |
+|---|---|---|
+| A. LLM JSON 直抽 | 仅 userUrl 同源检查 | ❌ 无黑名单过滤 |
+| B. 正则兜底 `deriveCompanyUrlFromText` | `NON_COMPANY_DOMAINS` 集合 | ❌ 集合里没 AI 工具 |
+| C. 邮箱反推 `deriveCompanyUrlFromEmail` | 仅 `FREE_EMAIL_DOMAINS` | ❌ `noreply@openai.com` 会派生出 `https://openai.com` |
+
+**修**:
+- 扩充 `NON_COMPANY_DOMAINS`,新增 21 个 AI 工具站,按地理 + 类型分组(注释清晰):
+  - 西方 AI 助手: chatgpt.com / openai.com / claude.ai / anthropic.com / copilot.microsoft.com / perplexity.ai / character.ai / poe.com
+  - 西方 AI 图像/视频: midjourney.com / runwayml.com
+  - 国产大模型: doubao.com / kimi.com / moonshot.cn / deepseek.com / tongyi.aliyun.com / xinghuo.xfyun.cn / xfyun.cn / chatglm.cn / zhipuai.cn / 01.ai / minimax.chat / baichuan-ai.com
+  - 注:gemini.google.com / bard.google.com / yiyan.baidu.com 通过父域 google.com / baidu.com 自动覆盖(`tryDomain` 的 last2 匹配机制)
+- 抽取 `cleanExtractedCompanyUrl(url, userUrl)` 纯函数,**合并** userUrl 同源 + NON_COMPANY 黑名单两道检查,替换原 `extractEntities` 里的 14 行内联域名比对块
+- `deriveCompanyUrlFromEmail` 新增 NON_COMPANY 检查(防 `noreply@openai.com` 边缘情况)
+- TDD 流程:先写 22 个失败测试 → 看 21 失败 / 33 通过 → 实现 → 全部 54/54 → 全套 83/83
+
+**架构原则贯彻**:`extract.js` 已有 `FREE_EMAIL_DOMAINS` + `deriveCompanyUrlFromEmail`、`NON_COMPANY_DOMAINS` + `deriveCompanyUrlFromText` 这一对模式 —— 这次只是把同样的 set+filter 模式补到第 3 条路径(LLM JSON 直抽)上,不引入新概念。
+
+**未做**:UI 不暴露"已自动忽略 AI 工具站"提示(用户偏好,降低界面复杂度)。命中时仅 `console.log` 进 Railway 日志便于观察。
+
+commit `55ac9e5`
+
 ---
 
 ## 核心文件地图
@@ -472,10 +503,10 @@ DESIGN.md                     awesome-design-md 的 Stripe 参考(npx getdesign 
 
 ## Git 主分支状态
 
-最新 commit: `7bd3a35 ui(channel): drop redundant 搜索 from Google ads label`
+最新 commit: `55ac9e5 fix(intel): block AI tool URLs from being treated as sender's company site`
 远程: `origin/main` 同步
 PR: 无开启中
-总计本轮:PR #1(29 commit)+ PR #2(22 commit)+ PR #3(9 commit)+ 27 次 hotfix 直推
+总计本轮:PR #1(29 commit)+ PR #2(22 commit)+ PR #3(9 commit)+ 28 次 hotfix 直推 + 1 次 docs sync
 
 ### Hotfix 时间线
 ```
@@ -505,5 +536,7 @@ dd891cb feat(history): show inquiry channel on history cards
 f3ad7d7 ui: rename 战略综合 score to 老板雷达 to match updated prompt
 c92ffda ui(query): replace native <select> with Stripe-styled custom dropdown
 b491038 feat(intel): add Google Maps search for sender's physical-presence verification
-7bd3a35 ui(channel): drop redundant 搜索 from Google ads channel label   ← 最新
+7bd3a35 ui(channel): drop redundant 搜索 from Google ads channel label
+af00493 docs(notebook): sync with channel / Maps / 老板雷达 / custom Select rollout
+55ac9e5 fix(intel): block AI tool URLs from being treated as sender's company site   ← 最新
 ```
