@@ -8,6 +8,7 @@ import {
   getUserSettings,
   saveUserSettings,
   getSerpUsage,
+  validateGlobalExtractionSettings,
 } from '@/lib/kv'
 
 // GET: admin gets global + own; user gets their own apiKey/modelName
@@ -40,12 +41,19 @@ export async function POST(req) {
   const data = await req.json()
 
   if (session.role === 'admin') {
+    const validationError = validateGlobalExtractionSettings(data)
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 })
+    }
     await saveGlobalSettings({
       baseUrl: data.baseUrl,
       systemPrompt: data.systemPrompt,
       fallbackSystemPrompt: data.fallbackSystemPrompt,
       serpApiKey: data.serpApiKey,
       extractionModel: data.extractionModel,
+      extractionModelVision: data.extractionModelVision,
+      extractionBaseUrl: data.extractionBaseUrl,
+      extractionApiKey: data.extractionApiKey,
       extractionPrompt: data.extractionPrompt,
     })
     await saveUserSettings(session.email, { apiKey: data.apiKey, modelName: data.modelName })

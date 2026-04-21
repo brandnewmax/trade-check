@@ -1573,6 +1573,9 @@ function SettingsPage({ user }) {
     fallbackSystemPrompt: '',
     serpApiKey: '',
     extractionModel: 'gemini-2.5-flash',
+    extractionModelVision: '',
+    extractionBaseUrl: '',
+    extractionApiKey: '',
     extractionPrompt: '',
     apiKey: '',
     modelName: 'gemini-3.1-pro-preview-vertex',
@@ -1581,6 +1584,7 @@ function SettingsPage({ user }) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState('')
 
   useEffect(() => {
     fetch('/api/settings').then(r => r.json()).then(d => {
@@ -1591,6 +1595,9 @@ function SettingsPage({ user }) {
         fallbackSystemPrompt: d.fallbackSystemPrompt ?? '',
         serpApiKey: d.serpApiKey ?? '',
         extractionModel: d.extractionModel ?? 'gemini-2.5-flash',
+        extractionModelVision: d.extractionModelVision ?? '',
+        extractionBaseUrl: d.extractionBaseUrl ?? '',
+        extractionApiKey: d.extractionApiKey ?? '',
         extractionPrompt: d.extractionPrompt ?? '',
         apiKey: d.apiKey ?? '',
         modelName: d.modelName ?? f.modelName,
@@ -1603,17 +1610,27 @@ function SettingsPage({ user }) {
   const handleSave = async (e) => {
     e.preventDefault()
     setSaving(true)
-    await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+    setSaveError('')
+    const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
       baseUrl: form.baseUrl,
       systemPrompt: form.systemPrompt,
       fallbackSystemPrompt: form.fallbackSystemPrompt,
       serpApiKey: form.serpApiKey,
       extractionModel: form.extractionModel,
+      extractionModelVision: form.extractionModelVision,
+      extractionBaseUrl: form.extractionBaseUrl,
+      extractionApiKey: form.extractionApiKey,
       extractionPrompt: form.extractionPrompt,
       apiKey: form.apiKey,
       modelName: form.modelName,
     }) })
-    setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2500)
+    setSaving(false)
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      setSaveError(body.error || `保存失败(HTTP ${res.status})`)
+      return
+    }
+    setSaved(true); setTimeout(() => setSaved(false), 2500)
   }
 
   const isAdmin = user?.role === 'admin'
@@ -1728,11 +1745,33 @@ function SettingsPage({ user }) {
               </div>
             )}
           </FormItem>
-          <FormItem label="结构化抽取模型" hint="用便宜快速模型,如 gemini-2.5-flash">
+          <FormItem label="抽取模型(无图片)" hint="纯文本询盘用的便宜快速模型,如 gemini-2.5-flash">
             <input
               className={inputCls}
               value={form.extractionModel || ''}
               onChange={(e) => setForm({ ...form, extractionModel: e.target.value })}
+            />
+          </FormItem>
+          <FormItem label="抽取模型(有图片)" hint="名片 / 截图 OCR 需要强多模态,如 gemini-3.1-pro 或 claude-sonnet-4-6">
+            <input
+              className={inputCls}
+              value={form.extractionModelVision || ''}
+              onChange={(e) => setForm({ ...form, extractionModelVision: e.target.value })}
+            />
+          </FormItem>
+          <FormItem label="独立抽取 Base URL" hint="留空则复用上方主 Base URL;填了则下方 API Key 也必须填">
+            <input
+              className={inputCls}
+              placeholder="留空则使用主 Base URL"
+              value={form.extractionBaseUrl || ''}
+              onChange={(e) => setForm({ ...form, extractionBaseUrl: e.target.value })}
+            />
+          </FormItem>
+          <FormItem label="独立抽取 API Key" hint="留空则复用登录用户自己的 API Key;填了则上方 Base URL 也必须填">
+            <PasswordInput
+              placeholder="留空则使用用户 API Key"
+              value={form.extractionApiKey || ''}
+              onChange={(e) => setForm({ ...form, extractionApiKey: e.target.value })}
             />
           </FormItem>
           <FormItem label="抽取 Prompt">
@@ -1775,6 +1814,11 @@ function SettingsPage({ user }) {
 
       {/* Sticky save bar */}
       <div className="fixed bottom-0 left-0 right-0 lg:left-60 bg-white/95 backdrop-blur border-t border-stripe-border py-4 px-4 sm:px-6 lg:px-8 flex items-center justify-end gap-3 z-20">
+        {saveError && (
+          <span className="text-caption text-stripe-ruby truncate max-w-[60%]" title={saveError}>
+            ⚠ {saveError}
+          </span>
+        )}
         {saved && <span className="text-caption text-stripe-successText">✓ 已保存</span>}
         <button
           type="submit"
