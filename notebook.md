@@ -1,6 +1,6 @@
 # trade-check · 开发进度笔记
 
-> 最近更新: 2026-04-19
+> 最近更新: 2026-04-21
 
 > 外贸背调工具——用户收到客户询盘后,上传名片/邮件截图+文本,系统自动拉取多源公开情报(LinkedIn / Facebook / Panjiva / Wayback / 负面舆情),由 AI 给出风险等级和具体建议。
 
@@ -21,8 +21,9 @@
 | 5. 历史页性能 + 卡片重设计 | 直接推 main | ✅ 全部部署 | pipeline 批处理 + 懒加载 + 4 维分数卡片 + 客户标识 |
 | 6. 询盘渠道 + Maps 实地核验 + 分数重命名 | 直接推 main | ✅ 全部部署 | 询盘渠道必填下拉 · 自定义 Stripe 风下拉 · Google Maps 作为第 9 路情报源 · 战略综合 → 老板雷达 |
 | 7. AI 工具站黑名单 | 直接推 main | ✅ 已部署 | chatgpt.com / claude.ai / 国产大模型 等 21 个 AI 工具站不再被误识别为发件方网址 |
+| 8. 抽取端点分离 + 双模型 | 直接推 main | ✅ 已部署 | 抽取走独立 baseUrl/apiKey;无图/有图用不同模型;删掉 ⑪ 的强制升级 |
 
-**测试状态**: 83/83 单元测试通过 · `npm run build` 干净
+**测试状态**: 98/98 单元测试通过 · `npm run build` 干净
 
 ---
 
@@ -394,6 +395,52 @@ fallback 链确实在救命,LLM 仍然经常在 JSON 模式下漏 URL,但正则 
 
 commit `55ac9e5`
 
+### ㉖ ★ 抽取端点分离 + 双模型(无图/有图)+ 废掉 ⑪ 强制升级
+**问题**:
+- hotfix ⑪ 里有一条"图片存在 → 抽取强制换主模型(如 Sonnet 4.6)"的规则。当初是因为 gemini-2.5-flash OCR 名片漏字段才加的,现在 Gemini 3.1 Flash Lite / Gemini 3.1 Pro 等已足够强,这条规则让用户在`/settings` 里设的 `extractionModel` 在有图片时**完全失效**,很反直觉(用户以为写死了 Sonnet 4.6)
+- 抽取调用和主分析**共用**同一个 `baseUrl` + 用户的 `apiKey`,无法把抽取路由到更便宜/更快的第三方 provider
+- 无图片 vs 有图片 需要不同强度的模型,但当前只有一个 `extractionModel` 字段
+
+**修**(先 brainstorm → 出 spec → TDD 实现):
+- **全局设置新增 3 个字段**(`lib/kv.js`):
+  - `extractionModelVision`(**始终必填**)——名片 / 截图 OCR 用的强多模态模型
+  - `extractionBaseUrl` / `extractionApiKey`(可空 · 成对必填)——独立抽取端点,留空则降级复用主端点 + 用户 apiKey
+  - 原 `extractionModel` 保留,语义改为"无图片情况"的模型(UI label 改为"抽取模型(无图片)")
+- **纯函数 `resolveExtractionEndpoint(globalSettings, userApiKey, hasImages)`**(`lib/intel/index.js`):返回 `{ baseUrl, apiKey, model }`,集中一处决定抽取调用打哪个端点
+  ```
+  useSeparate = !!(extractionBaseUrl && extractionApiKey)
+  baseUrl     = useSeparate ? extractionBaseUrl : globalSettings.baseUrl
+  apiKey      = useSeparate ? extractionApiKey  : userApiKey
+  model       = hasImages ? extractionModelVision : extractionModel
+  ```
+  → **彻底废掉** ⑪ 里"有图片强制升级到主模型"的行为;现在永远用 admin 在 `/settings` 填的那两个值
+- **原子校验 `validateGlobalExtractionSettings(data)`**(`lib/kv.js`):返回 null 或首个 zh-CN 错误。`/api/settings` POST 拦截到 400,前端 SettingsPage 在 sticky 保存条里红字展示
+  | 条件 | 错误信息 |
+  |---|---|
+  | `extractionModel` 空 | `请填写:抽取模型(无图片)` |
+  | `extractionModelVision` 空 | `请填写:抽取模型(有图片)` |
+  | `extractionBaseUrl` 填了但 `extractionApiKey` 空 | `填写独立抽取端点时,Base URL 和 API Key 必须同时填写(缺 API Key)` |
+  | `extractionApiKey` 填了但 `extractionBaseUrl` 空 | `填写独立抽取端点时,Base URL 和 API Key 必须同时填写(缺 Base URL)` |
+- **UI**(`src/app/page.js` SettingsPage):"实时情报"卡内,在原"结构化抽取模型"位置改成 4 项堆叠:
+  - 抽取模型(无图片)· 抽取模型(有图片)· 独立抽取 Base URL · 独立抽取 API Key
+  - Base URL 输入框带 placeholder "留空则使用主 Base URL",API Key 同理
+  - 保存出错时 sticky 条左侧红字 `⚠ <错误信息>`(与已有 ✓ 已保存 并列)
+- **gatherIntel / analyze route**:`mainModel` 参数去掉,不再传给 `gatherIntel`
+- **TDD**:先写 15 个失败测试(6 个 `resolve.test.js` + 9 个 `kv.test.js`)→ 实现 → 全套 98/98 → `npm run build` 干净
+
+**数据迁移**: 零迁移。老 `global_settings` hash 没有新 key,`hgetall` 返回 undefined → 降级路径自动生效。下次管理员进 `/settings` 保存时,校验会逼着填 `extractionModelVision`(快速复制 `extractionModel` 的值即可)。
+
+**⚠️ 部署后必做**:管理员进 `/settings`,填好"抽取模型(有图片)",再保存一次 —— 否则第一个带图片的分析会因 `extractionModelVision` 为空走空模型名报错。
+
+**架构收益**:
+- 抽取模型用户真正可控,不再被 ⑪ 偷偷覆盖
+- 可以把抽取单独路由到 Google AI Studio(免费配额)或 DeepSeek(便宜)等,省主端点 token
+- 单点解析 `resolveExtractionEndpoint` + 单点校验 `validateGlobalExtractionSettings`,以后加维度(比如不同地区不同模型)改一处即可
+
+**设计文档**:`docs/superpowers/specs/2026-04-21-split-extraction-endpoint-design.md`
+
+commit `6ca943e`
+
 ---
 
 ## 核心文件地图
@@ -503,10 +550,10 @@ DESIGN.md                     awesome-design-md 的 Stripe 参考(npx getdesign 
 
 ## Git 主分支状态
 
-最新 commit: `55ac9e5 fix(intel): block AI tool URLs from being treated as sender's company site`
+最新 commit: `6ca943e feat(settings): split extraction endpoint + dual text/vision models`
 远程: `origin/main` 同步
 PR: 无开启中
-总计本轮:PR #1(29 commit)+ PR #2(22 commit)+ PR #3(9 commit)+ 28 次 hotfix 直推 + 1 次 docs sync
+总计本轮:PR #1(29 commit)+ PR #2(22 commit)+ PR #3(9 commit)+ 29 次 hotfix 直推 + 2 次 docs sync
 
 ### Hotfix 时间线
 ```
@@ -538,5 +585,7 @@ c92ffda ui(query): replace native <select> with Stripe-styled custom dropdown
 b491038 feat(intel): add Google Maps search for sender's physical-presence verification
 7bd3a35 ui(channel): drop redundant 搜索 from Google ads channel label
 af00493 docs(notebook): sync with channel / Maps / 老板雷达 / custom Select rollout
-55ac9e5 fix(intel): block AI tool URLs from being treated as sender's company site   ← 最新
+55ac9e5 fix(intel): block AI tool URLs from being treated as sender's company site
+bd5f50d docs(notebook): add hotfix ㉕ — AI tool URL blacklist
+6ca943e feat(settings): split extraction endpoint + dual text/vision models   ← 最新
 ```
