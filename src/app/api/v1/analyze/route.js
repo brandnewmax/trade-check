@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { getGlobalSettings, getUserSettings, saveQuery } from '@/lib/kv'
 import { gatherIntel, formatIntelAsBriefing } from '@/lib/intel'
 import { newRequestId, hashInquiry, writeObservationLog } from '@/lib/obs'
-import { normalizeRequest } from '@/lib/requestNormalizer'
+import { normalizeRequest, deriveOwnDomains } from '@/lib/requestNormalizer'
 import { createLogger, previewText, runWithRequestContext } from '@/lib/logger'
 
 const log = createLogger('route/v1-analyze')
@@ -188,13 +188,20 @@ export async function POST(req) {
         }
 
         // ── Stage 1-3: Intel pipeline ──────────────────────────────────────
-        const url = companyObj.website || ''
+        // Derive ALL domains the seller owns from company_profile regardless
+        // of whether SN passed object-form (.website) or string-form (the
+        // markdown profile_report, contract §10.7). `ownDomains` feeds the
+        // self-exclusion in extractEntities so the regex fallback can't
+        // mis-pick the seller's own site from the inquiry text (P1).
+        const ownDomains = deriveOwnDomains(company_profile)
+        const url = companyObj.website || (ownDomains[0] ? `https://${ownDomains[0]}` : '')
         let intel = null
         if (enableIntel) {
           progress('gather_intel')
           try {
             intel = await gatherIntel({
               url,
+              ownDomains,
               inquiry: inquiry_text,
               images: preparedImages,
               apiKey,

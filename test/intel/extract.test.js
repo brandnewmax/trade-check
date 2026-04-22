@@ -194,4 +194,59 @@ describe('deriveCompanyUrlFromText', () => {
       'main: https://mycorp.com alt: other.com'
     )).toBe('https://mycorp.com')
   })
+
+  // ── Array-form excludeDomain (P1: string | string[]) ─────────────────
+
+  it('accepts string[] as excludeDomain and excludes every listed domain', () => {
+    const out = deriveCompanyUrlFromText(
+      'We love https://konmison.com and https://starseedpkg.com — our site is https://thegoodbuyer.com',
+      ['konmison.com', 'starseedpkg.com']
+    )
+    expect(out).toBe('https://thegoodbuyer.com')
+  })
+
+  it('array form excludes bare-domain matches too', () => {
+    const out = deriveCompanyUrlFromText(
+      'saw konmison.com and starseedpkg.com — us: thegoodbuyer.com',
+      ['konmison.com', 'starseedpkg.com']
+    )
+    expect(out).toBe('https://thegoodbuyer.com')
+  })
+
+  it('array form accepts entries with protocol / www / subdomain variants', () => {
+    const out = deriveCompanyUrlFromText(
+      'I saw https://www.starseedpkg.com — at shop.konmison.com/products — us https://buyer.co',
+      ['https://www.konmison.com/', 'https://starseedpkg.com']
+    )
+    expect(out).toBe('https://buyer.co')
+  })
+
+  it('empty array behaves like no exclude', () => {
+    const out = deriveCompanyUrlFromText(
+      'visit https://anywhere.com',
+      []
+    )
+    expect(out).toBe('https://anywhere.com')
+  })
+
+  it('array with a single domain behaves like string form', () => {
+    const out = deriveCompanyUrlFromText(
+      'love https://konmison.com theirs https://other.com',
+      ['konmison.com']
+    )
+    expect(out).toBe('https://other.com')
+  })
+
+  // The real-world P1 scenario: SN passes company_profile as a string that
+  // mentions the seller's own domain; inquiry text also mentions that same
+  // domain ("I saw your website starseedpkg.com..."). With an array of all
+  // own-domains derived from the profile, the regex fallback must skip the
+  // seller's own domain and either return null or the buyer's unrelated one.
+  it('real SN scenario — seller domain mentioned in inquiry is excluded', () => {
+    const out = deriveCompanyUrlFromText(
+      'Hello, I saw your website starseedpkg.com and am interested in bulk LED panels.',
+      ['starseedpkg.com']
+    )
+    expect(out).toBeNull()
+  })
 })
