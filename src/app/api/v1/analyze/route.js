@@ -170,20 +170,41 @@ export async function POST(req) {
         }
 
         // ── Prepare image payloads ─────────────────────────────────────────
+        // P6: image CDNs (especially Chinese ones, Alibaba, and most SN-
+        // hosted buckets) commonly reject requests without a browser UA.
+        // Silent failures used to just drop the image with no log line;
+        // now every failure leaves a trace so degraded image-based
+        // inquiries are diagnosable.
         progress('prepare_images')
         const preparedImages = []
+        const IMG_FETCH_UA =
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
         for (const img of inquiry_images.slice(0, 4)) {
           if (img.base64) {
             preparedImages.push({ base64: img.base64, type: img.type || 'image/jpeg' })
           } else if (img.url) {
+            const imgHost = (() => { try { return new URL(img.url).host } catch { return null } })()
             try {
-              const res = await fetch(img.url, { signal: AbortSignal.timeout(10_000) })
+              const res = await fetch(img.url, {
+                headers: {
+                  'User-Agent': IMG_FETCH_UA,
+                  Accept: 'image/*,*/*;q=0.8',
+                },
+                signal: AbortSignal.timeout(10_000),
+              })
               if (res.ok) {
                 const buf = await res.arrayBuffer()
                 const base64 = Buffer.from(buf).toString('base64')
                 preparedImages.push({ base64, type: img.type || res.headers.get('content-type') || 'image/jpeg' })
+              } else {
+                log.warn('image_fetch_fail', { host: imgHost, status: res.status, reason: `HTTP ${res.status}` })
               }
-            } catch { /* skip failed image downloads */ }
+            } catch (e) {
+              log.warn('image_fetch_fail', {
+                host: imgHost,
+                reason: (e?.name === 'TimeoutError' || /timeout/i.test(e?.message)) ? 'timeout' : (e?.message || String(e)).slice(0, 160),
+              })
+            }
           }
         }
 
