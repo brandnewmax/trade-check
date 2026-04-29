@@ -3,8 +3,10 @@ import { resolveExtractionEndpoint } from '@/lib/intel'
 
 const base = {
   baseUrl: 'https://main.example.com/v1',
+  protocol: 'openai',
   extractionBaseUrl: '',
   extractionApiKey: '',
+  extractionProtocol: '',
   extractionModel: 'gemini-2.5-flash',
   extractionModelVision: 'gemini-3.1-pro',
 }
@@ -16,6 +18,7 @@ describe('resolveExtractionEndpoint', () => {
       baseUrl: 'https://main.example.com/v1',
       apiKey: 'user-main-key',
       model: 'gemini-2.5-flash',
+      protocol: 'openai',
     })
   })
 
@@ -25,6 +28,7 @@ describe('resolveExtractionEndpoint', () => {
       baseUrl: 'https://main.example.com/v1',
       apiKey: 'user-main-key',
       model: 'gemini-3.1-pro',
+      protocol: 'openai',
     })
   })
 
@@ -39,6 +43,7 @@ describe('resolveExtractionEndpoint', () => {
       baseUrl: 'https://extract.example.com/v1',
       apiKey: 'extract-key-xyz',
       model: 'gemini-2.5-flash',
+      protocol: 'openai',
     })
   })
 
@@ -53,6 +58,7 @@ describe('resolveExtractionEndpoint', () => {
       baseUrl: 'https://extract.example.com/v1',
       apiKey: 'extract-key-xyz',
       model: 'gemini-3.1-pro',
+      protocol: 'openai',
     })
   })
 
@@ -72,5 +78,23 @@ describe('resolveExtractionEndpoint', () => {
     const onlyKey = { ...base, extractionBaseUrl: '', extractionApiKey: 'key' }
     expect(resolveExtractionEndpoint(onlyBase, 'user-key', false).baseUrl).toBe(base.baseUrl)
     expect(resolveExtractionEndpoint(onlyKey, 'user-key', false).baseUrl).toBe(base.baseUrl)
+  })
+
+  it('uses extractionProtocol when set', () => {
+    const settings = { ...base, extractionProtocol: 'anthropic' }
+    const out = resolveExtractionEndpoint(settings, 'user-key', false)
+    expect(out.protocol).toBe('anthropic')
+  })
+
+  it('falls back to main protocol when extractionProtocol is empty', () => {
+    const settings = { ...base, protocol: 'anthropic', extractionProtocol: '' }
+    const out = resolveExtractionEndpoint(settings, 'user-key', false)
+    expect(out.protocol).toBe('anthropic')
+  })
+
+  it('defaults to openai when neither protocol is set', () => {
+    const settings = { ...base, protocol: '', extractionProtocol: '' }
+    const out = resolveExtractionEndpoint(settings, 'user-key', false)
+    expect(out.protocol).toBe('openai')
   })
 })

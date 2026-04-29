@@ -47,6 +47,7 @@ export async function POST(req) {
     }
     await saveGlobalSettings({
       baseUrl: data.baseUrl,
+      protocol: data.protocol,
       systemPrompt: data.systemPrompt,
       fallbackSystemPrompt: data.fallbackSystemPrompt,
       serpApiKey: data.serpApiKey,
@@ -54,6 +55,7 @@ export async function POST(req) {
       extractionModelVision: data.extractionModelVision,
       extractionBaseUrl: data.extractionBaseUrl,
       extractionApiKey: data.extractionApiKey,
+      extractionProtocol: data.extractionProtocol,
       extractionPrompt: data.extractionPrompt,
     })
     await saveUserSettings(session.email, { apiKey: data.apiKey, modelName: data.modelName })

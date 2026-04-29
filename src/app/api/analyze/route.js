@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { requireSession } from '@/lib/auth'
 import { getGlobalSettings, getUserSettings, saveQuery } from '@/lib/kv'
 import { gatherIntel, formatIntelAsBriefing } from '@/lib/intel'
+import { llmStream, LlmError } from '@/lib/llm-client'
 
 export async function POST(req) {
   const { session, error, status } = await requireSession()
@@ -36,7 +37,6 @@ export async function POST(req) {
   }
 
   const encoder = new TextEncoder()
-  const decoder = new TextDecoder()
   const HEARTBEAT_INTERVAL = 8000
 
   const stream = new ReadableStream({
@@ -113,85 +113,30 @@ export async function POST(req) {
         channelBlock +
         `**客户询盘内容:**\n${inquiry || '未提供'}`
 
-      let userContent
-      if (images.length > 0) {
-        userContent = [
-          { type: 'text', text: textPart },
-          ...images.map(img => ({
-            type: 'image_url',
-            image_url: {
-              url: `data:${img.type || 'image/jpeg'};base64,${img.base64}`,
-              detail: 'high',
-            },
-          })),
-        ]
-      } else {
-        userContent = textPart
-      }
+      const protocol = globalSettings.protocol || 'openai'
 
-      const endpoint = baseUrl.replace(/\/$/, '') + '/chat/completions'
-
-      let upstreamRes
-      try {
-        upstreamRes = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: modelName,
-            stream: true,
-            messages: [
-              ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
-              { role: 'user', content: userContent },
-            ],
-          }),
-        })
-      } catch (e) {
-        enqueue({ type: 'error', error: `无法连接到 API：${e.message}` })
-        clearInterval(heartbeatTimer)
-        try { controller.close() } catch {}
-        return
-      }
-
-      if (!upstreamRes.ok) {
-        let detail = ''
-        try { detail = await upstreamRes.text() } catch {}
-        try { detail = JSON.parse(detail)?.error?.message || detail } catch {}
-        enqueue({ type: 'error', error: `API 错误 ${upstreamRes.status}：${String(detail).slice(0, 300)}` })
-        clearInterval(heartbeatTimer)
-        try { controller.close() } catch {}
-        return
-      }
-
-      const reader = upstreamRes.body.getReader()
       let fullText = ''
-      let buffer = ''
 
       try {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() ?? ''
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue
-            const data = line.slice(6).trim()
-            if (data === '[DONE]') continue
-            try {
-              const parsed = JSON.parse(data)
-              const delta = parsed.choices?.[0]?.delta?.content || ''
-              if (delta) {
-                fullText += delta
-                enqueue({ type: 'delta', delta })
-              }
-            } catch {}
-          }
+        const gen = llmStream({
+          protocol,
+          baseUrl,
+          apiKey,
+          model: modelName,
+          system: systemPrompt || null,
+          messages: [{ role: 'user', content: textPart }],
+          images: images.length > 0 ? images : null,
+        })
+
+        for await (const delta of gen) {
+          fullText += delta
+          enqueue({ type: 'delta', delta })
         }
       } catch (e) {
-        enqueue({ type: 'error', error: `流中断：${e.message}` })
+        const msg = e instanceof LlmError
+          ? `API 错误 ${e.status}：${String(e.detail).slice(0, 300)}`
+          : `流中断：${e.message}`
+        enqueue({ type: 'error', error: msg })
       } finally {
         clearInterval(heartbeatTimer)
 

@@ -1569,6 +1569,7 @@ function SettingsCard({ title, description, adminBadge, children }) {
 function SettingsPage({ user }) {
   const [form, setForm] = useState({
     baseUrl: '',
+    protocol: 'openai',
     systemPrompt: '',
     fallbackSystemPrompt: '',
     serpApiKey: '',
@@ -1576,6 +1577,7 @@ function SettingsPage({ user }) {
     extractionModelVision: '',
     extractionBaseUrl: '',
     extractionApiKey: '',
+    extractionProtocol: '',
     extractionPrompt: '',
     apiKey: '',
     modelName: 'gemini-3.1-pro-preview-vertex',
@@ -1591,6 +1593,7 @@ function SettingsPage({ user }) {
       setForm(f => ({
         ...f,
         baseUrl: d.baseUrl ?? '',
+        protocol: d.protocol ?? 'openai',
         systemPrompt: d.systemPrompt ?? '',
         fallbackSystemPrompt: d.fallbackSystemPrompt ?? '',
         serpApiKey: d.serpApiKey ?? '',
@@ -1598,6 +1601,7 @@ function SettingsPage({ user }) {
         extractionModelVision: d.extractionModelVision ?? '',
         extractionBaseUrl: d.extractionBaseUrl ?? '',
         extractionApiKey: d.extractionApiKey ?? '',
+        extractionProtocol: d.extractionProtocol ?? '',
         extractionPrompt: d.extractionPrompt ?? '',
         apiKey: d.apiKey ?? '',
         modelName: d.modelName ?? f.modelName,
@@ -1613,6 +1617,7 @@ function SettingsPage({ user }) {
     setSaveError('')
     const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
       baseUrl: form.baseUrl,
+      protocol: form.protocol,
       systemPrompt: form.systemPrompt,
       fallbackSystemPrompt: form.fallbackSystemPrompt,
       serpApiKey: form.serpApiKey,
@@ -1620,6 +1625,7 @@ function SettingsPage({ user }) {
       extractionModelVision: form.extractionModelVision,
       extractionBaseUrl: form.extractionBaseUrl,
       extractionApiKey: form.extractionApiKey,
+      extractionProtocol: form.extractionProtocol,
       extractionPrompt: form.extractionPrompt,
       apiKey: form.apiKey,
       modelName: form.modelName,
@@ -1654,12 +1660,24 @@ function SettingsPage({ user }) {
     >
       <SettingsCard title="模型配置" description="API 接入与主分析模型">
         {isAdmin && (
-          <FormItem label="Base URL" hint="OpenAI 兼容端点">
+          <FormItem label="Base URL" hint={form.protocol === 'anthropic' ? 'Anthropic API 端点' : 'OpenAI 兼容端点'}>
             <input
               className={inputCls}
               value={form.baseUrl || ''}
               onChange={(e) => setForm({ ...form, baseUrl: e.target.value })}
             />
+          </FormItem>
+        )}
+        {isAdmin && (
+          <FormItem label="API 协议" hint="选择后端 API 调用协议">
+            <select
+              className={`${inputCls} cursor-pointer`}
+              value={form.protocol || 'openai'}
+              onChange={(e) => setForm({ ...form, protocol: e.target.value })}
+            >
+              <option value="openai">OpenAI 兼容 (/chat/completions)</option>
+              <option value="anthropic">Anthropic Messages (/v1/messages)</option>
+            </select>
           </FormItem>
         )}
         <FormItem label="API Key" hint="你的个人密钥,不与他人共享">
@@ -1773,6 +1791,17 @@ function SettingsPage({ user }) {
               value={form.extractionApiKey || ''}
               onChange={(e) => setForm({ ...form, extractionApiKey: e.target.value })}
             />
+          </FormItem>
+          <FormItem label="抽取 API 协议" hint="留空则复用主协议;独立端点可能需要不同协议">
+            <select
+              className={`${inputCls} cursor-pointer`}
+              value={form.extractionProtocol || ''}
+              onChange={(e) => setForm({ ...form, extractionProtocol: e.target.value })}
+            >
+              <option value="">与主协议相同</option>
+              <option value="openai">OpenAI 兼容 (/chat/completions)</option>
+              <option value="anthropic">Anthropic Messages (/v1/messages)</option>
+            </select>
           </FormItem>
           <FormItem label="抽取 Prompt">
             <textarea
