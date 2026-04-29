@@ -117,6 +117,14 @@ export async function POST(req) {
 
       let fullText = ''
 
+      console.log('[analyze] Stage 4: main LLM call', {
+        protocol,
+        model: modelName,
+        hasImages: images.length > 0,
+        imageCount: images.length,
+        textPartLen: textPart.length,
+      })
+
       try {
         const gen = llmStream({
           protocol,
