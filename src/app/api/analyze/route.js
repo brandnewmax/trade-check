@@ -130,7 +130,8 @@ export async function POST(req) {
         textPartLen: textPart.length,
       })
 
-      try {
+      const runMainCall = async () => {
+        let acc = ''
         const gen = llmStream({
           protocol,
           baseUrl,
@@ -140,10 +141,21 @@ export async function POST(req) {
           messages: [{ role: 'user', content: textPart }],
           images: images.length > 0 ? images : null,
         })
-
         for await (const delta of gen) {
-          fullText += delta
+          acc += delta
           enqueue({ type: 'delta', delta })
+        }
+        return acc
+      }
+
+      try {
+        fullText = await runMainCall()
+        // deepseek-v4-pro (reasoning model) intermittently ends a turn with no
+        // visible text. Retry once so a single flaky generation doesn't surface
+        // as an empty report.
+        if (!fullText.trim()) {
+          console.warn('[analyze] empty main response, retrying once')
+          fullText = await runMainCall()
         }
       } catch (e) {
         const msg = e instanceof LlmError

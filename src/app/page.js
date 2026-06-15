@@ -1049,10 +1049,15 @@ function QueryPage({ user }) {
 
     const abortCtrl = new AbortController()
     abortCtrlRef.current = abortCtrl
-    // Safety timeout: abort if no real content received for 60s
+    // Watchdog: abort only when the connection goes fully silent (no bytes,
+    // not even the 8s server heartbeat) for 60s — a dead connection, not a
+    // slow model. A reasoning main model can take 90s+ before its first token,
+    // so we must NOT abort just because no `delta` has arrived yet. A separate
+    // absolute ceiling guards against a stream that stays alive but never ends.
     let lastContentAt = Date.now()
+    const startedAt = Date.now()
     const watchdog = setInterval(() => {
-      if (Date.now() - lastContentAt > 60000) {
+      if (Date.now() - lastContentAt > 60000 || Date.now() - startedAt > 300000) {
         abortCtrl.abort()
         clearInterval(watchdog)
       }
@@ -1083,7 +1088,10 @@ function QueryPage({ user }) {
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
-        // lastContentAt is reset below only when actual delta arrives
+        // Any bytes — including the server's 8s heartbeat ping — mean the
+        // connection is alive, so keep the watchdog from firing during a slow
+        // model's pre-token thinking phase.
+        lastContentAt = Date.now()
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
         buffer = lines.pop() ?? ''
