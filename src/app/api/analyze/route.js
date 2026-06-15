@@ -70,12 +70,17 @@ export async function POST(req) {
       }
 
       // ── Stage 4: main LLM ────────────────────────────────────────────────
-      const useBriefing = !!intel
-      const systemPrompt = useBriefing
-        ? globalSettings.systemPrompt
-        : globalSettings.fallbackSystemPrompt
+      // The prompt template is a fixed admin choice (global activePrompt) — it
+      // is NOT switched by whether intel was gathered. Intel only decides
+      // whether a real briefing or an explicit "no intel" note is injected, so
+      // the chosen prompt never dangles references to a briefing that's absent.
+      const systemPrompt = globalSettings.activePrompt === 'B'
+        ? globalSettings.fallbackSystemPrompt
+        : globalSettings.systemPrompt
 
-      const briefing = useBriefing ? formatIntelAsBriefing(intel) : ''
+      const briefing = intel
+        ? formatIntelAsBriefing(intel)
+        : '【实时情报简报】\n本次未联网检索情报,无外部核查数据。凡涉及需要外部核查的维度,请明确标注"数据缺失,无法核查",不得编造。'
 
       // Inject the user's own site content + Google search hits as a
       // separate context block so the LLM can distinguish "us" from "the

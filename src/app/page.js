@@ -1570,6 +1570,7 @@ function SettingsPage({ user }) {
   const [form, setForm] = useState({
     baseUrl: '',
     protocol: 'openai',
+    activePrompt: 'A',
     systemPrompt: '',
     fallbackSystemPrompt: '',
     serpApiKey: '',
@@ -1594,6 +1595,7 @@ function SettingsPage({ user }) {
         ...f,
         baseUrl: d.baseUrl ?? '',
         protocol: d.protocol ?? 'openai',
+        activePrompt: d.activePrompt ?? 'A',
         systemPrompt: d.systemPrompt ?? '',
         fallbackSystemPrompt: d.fallbackSystemPrompt ?? '',
         serpApiKey: d.serpApiKey ?? '',
@@ -1618,6 +1620,7 @@ function SettingsPage({ user }) {
     const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
       baseUrl: form.baseUrl,
       protocol: form.protocol,
+      activePrompt: form.activePrompt,
       systemPrompt: form.systemPrompt,
       fallbackSystemPrompt: form.fallbackSystemPrompt,
       serpApiKey: form.serpApiKey,
@@ -1815,10 +1818,40 @@ function SettingsPage({ user }) {
       )}
 
       {isAdmin && (
-        <SettingsCard title="Prompt 模板" description="主分析与降级模板" adminBadge>
+        <SettingsCard title="Prompt 模板" description="选择当前启用的分析模板" adminBadge>
           <FormItem
-            label="主 System Prompt(启用情报时使用)"
-            hint="强制绑定情报简报的证据驱动模板"
+            label="当前启用的模板"
+            hint="分析时固定使用所选模板,与是否联网取情报无关"
+          >
+            <div className="flex flex-col gap-2">
+              {[
+                { v: 'A', label: '模板 A · 老板雷达(评分式精简结论)' },
+                { v: 'B', label: '模板 B · 详细叙述版' },
+              ].map((opt) => (
+                <label
+                  key={opt.v}
+                  className={`flex items-center gap-2.5 px-3 h-10 rounded-stripe-sm border cursor-pointer transition-colors ${
+                    form.activePrompt === opt.v
+                      ? 'border-stripe-purple bg-stripe-purpleLight/20'
+                      : 'border-stripe-border bg-white hover:border-stripe-purple/40'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="activePrompt"
+                    value={opt.v}
+                    checked={form.activePrompt === opt.v}
+                    onChange={() => setForm({ ...form, activePrompt: opt.v })}
+                    className="accent-stripe-purple"
+                  />
+                  <span className="text-body font-light">{opt.label}</span>
+                </label>
+              ))}
+            </div>
+          </FormItem>
+          <FormItem
+            label="模板 A 内容"
+            hint="证据驱动的老板雷达模板;情报取到时简报会注入此模板"
           >
             <textarea
               className={`${textareaCls} font-mono text-caption-sm`}
@@ -1828,8 +1861,8 @@ function SettingsPage({ user }) {
             />
           </FormItem>
           <FormItem
-            label="Fallback System Prompt(关闭情报或情报失败时使用)"
-            hint="传统 5 维度模板"
+            label="模板 B 内容"
+            hint="传统 5 维度详细模板"
           >
             <textarea
               className={`${textareaCls} font-mono text-caption-sm`}

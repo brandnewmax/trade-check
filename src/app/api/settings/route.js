@@ -48,6 +48,7 @@ export async function POST(req) {
     await saveGlobalSettings({
       baseUrl: data.baseUrl,
       protocol: data.protocol,
+      activePrompt: data.activePrompt,
       systemPrompt: data.systemPrompt,
       fallbackSystemPrompt: data.fallbackSystemPrompt,
       serpApiKey: data.serpApiKey,
